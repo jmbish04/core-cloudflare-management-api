@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloudflare Management API - Documentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #f6821f 0%, #f38020 100%);
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .nav {
+            background: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav ul {
+            list-style: none;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2rem;
+            justify-content: center;
+        }
+
+        .nav a {
+            color: #f6821f;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        .nav a:hover {
+            color: #d66a0d;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+
+        .section {
+            background: white;
+            border-radius: 8px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        h2 {
+            color: #f6821f;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #f6821f;
+        }
+
+        h3 {
+            color: #333;
+            margin: 1.5rem 0 1rem;
+        }
+
+        .code-selector {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .code-selector button {
+            background: none;
+            border: none;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            font-weight: 500;
+            color: #666;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .code-selector button:hover {
+            color: #f6821f;
+        }
+
+        .code-selector button.active {
+            color: #f6821f;
+            border-bottom-color: #f6821f;
+        }
+
+        .code-block {
+            background: #282c34;
+            color: #abb2bf;
+            padding: 1.5rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            display: none;
+        }
+
+        .code-block.active {
+            display: block;
+        }
+
+        .code-block code {
+            display: block;
+        }
+
+        .endpoint {
+            margin: 2rem 0;
+            padding: 1rem;
+            background: #f9f9f9;
+            border-left: 4px solid #f6821f;
+        }
+
+        .method {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.85rem;
+            margin-right: 0.5rem;
+        }
+
+        .method.get { background: #61affe; color: white; }
+        .method.post { background: #49cc90; color: white; }
+        .method.put { background: #fca130; color: white; }
+        .method.patch { background: #50e3c2; color: white; }
+        .method.delete { background: #f93e3e; color: white; }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .feature-card {
+            padding: 1.5rem;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .feature-card h4 {
+            color: #f6821f;
+            margin-bottom: 0.5rem;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #f6821f;
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin: 0.25rem;
+        }
+
+        .mcp-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .mcp-card {
+            background: #f9f9f9;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .mcp-card h4 {
+            color: #f6821f;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .icon {
+            font-size: 1.5rem;
+        }
+
+        a {
+            color: #f6821f;
+        }
+
+        .highlight {
+            background: #fff3cd;
+            padding: 1rem;
+            border-left: 4px solid #ffc107;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔥 Cloudflare Management API</h1>
+        <p>Complete proxy API for managing Cloudflare resources with OpenAPI, MCP, RPC, and AI Agent support</p>
+    </div>
+
+    <nav class="nav">
+        <ul>
+            <li><a href="#overview">Overview</a></li>
+            <li><a href="#workers">Workers</a></li>
+            <li><a href="#pages">Pages</a></li>
+            <li><a href="#storage">Storage</a></li>
+            <li><a href="#flows">Workflows</a></li>
+            <li><a href="#mcp">MCP Integration</a></li>
+            <li><a href="#agent">AI Agent</a></li>
+            <li><a href="/docs">OpenAPI Docs</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <section id="overview" class="section">
+            <h2>📋 Overview</h2>
+            <p>The Cloudflare Management API is a comprehensive proxy layer over the Cloudflare TypeScript SDK, providing:</p>
+
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h4>🔐 Secure Authentication</h4>
+                    <p>Bearer token authentication with audit logging</p>
+                </div>
+                <div class="feature-card">
+                    <h4>📊 Audit Logging</h4>
+                    <p>Every request logged to D1 with Analytics Engine integration</p>
+                </div>
+                <div class="feature-card">
+                    <h4>📖 OpenAPI 3.1</h4>
+                    <p>Complete OpenAPI documentation with Swagger UI</p>
+                </div>
+                <div class="feature-card">
+                    <h4>🔌 MCP Support</h4>
+                    <p>Model Context Protocol for AI assistants</p>
+                </div>
+                <div class="feature-card">
+                    <h4>🤖 AI Agent</h4>
+                    <p>Natural language interface powered by Cloudflare AI</p>
+                </div>
+                <div class="feature-card">
+                    <h4>⚡ RPC Endpoints</h4>
+                    <p>Service binding support for Worker-to-Worker calls</p>
+                </div>
+            </div>
+
+            <h3>Quick Start</h3>
+            <p>All API requests require a Bearer token in the Authorization header:</p>
+
+            <div class="code-selector">
+                <button class="active" onclick="showCode(this, 'overview-curl')">cURL</button>
+                <button onclick="showCode(this, 'overview-python')">Python</button>
+                <button onclick="showCode(this, 'overview-typescript')">TypeScript</button>
+            </div>
+
+            <div class="code-block active" id="overview-curl">
+                <code>curl -X GET "https://your-worker.workers.dev/api/cloudflare-sdk/workers/scripts" \
+  -H "Authorization: Bearer YOUR_API_KEY"</code>
+            </div>
+
+            <div class="code-block" id="overview-python">
+                <code>import requests
+
+headers = {
+    "Authorization": "Bearer YOUR_API_KEY"
+}
+
+response = requests.get(
+    "https://your-worker.workers.dev/api/cloudflare-sdk/workers/scripts",
+    headers=headers
+)
+
+print(response.json())</code>
+            </div>
+
+            <div class="code-block" id="overview-typescript">
+                <code>const response = await fetch(
+  "https://your-worker.workers.dev/api/cloudflare-sdk/workers/scripts",
+  {
+    headers: {
+      "Authorization": "Bearer YOUR_API_KEY"
+    }
+  }
+);
+
+const data = await response.json();
+console.log(data);</code>
+            </div>
+        </section>
+
+        <section id="workers" class="section">
+            <h2>⚙️ Workers Management</h2>
+            <p>Manage Cloudflare Workers scripts, deployments, and settings.</p>
+
+            <div class="endpoint">
+                <h3><span class="method get">GET</span>/api/cloudflare-sdk/workers/scripts</h3>
+                <p>List all Worker scripts in your account</p>
+
+                <div class="code-selector">
+                    <button class="active" onclick="showCode(this, 'workers-list-curl')">cURL</button>
+                    <button onclick="showCode(this, 'workers-list-python')">Python</button>
+                    <button onclick="showCode(this, 'workers-list-typescript')">TypeScript</button>
+                </div>
+
+                <div class="code-block active" id="workers-list-curl">
+                    <code>curl -X GET "https://your-worker.workers.dev/api/cloudflare-sdk/workers/scripts" \
+  -H "Authorization: Bearer YOUR_API_KEY"</code>
+                </div>
+
+                <div class="code-block" id="workers-list-python">
+                    <code>import requests
+
+response = requests.get(
+    "https://your-worker.workers.dev/api/cloudflare-sdk/workers/scripts",
+    headers={"Authorization": "Bearer YOUR_API_KEY"}
+)
+
+workers = response.json()["result"]
+for worker in workers:
+    print(f"Worker: {worker['id']}")</code>
+                </div>
+
+                <div class="code-block" id="workers-list-typescript">
+                    <code>const listWorkers = async () => {
+  const response = await fetch(
+    "https://your-worker.workers.dev/api/cloudflare-sdk/workers/scripts",
+    { headers: { "Authorization": "Bearer YOUR_API_KEY" } }
+  );
+
+  const { result } = await response.json();
+  return result;
+};</code>
+                </div>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method delete">DELETE</span>/api/cloudflare-sdk/workers/scripts/{scriptName}</h3>
+                <p>Delete a Worker script</p>
+
+                <div class="code-selector">
+                    <button class="active" onclick="showCode(this, 'workers-delete-curl')">cURL</button>
+                    <button onclick="showCode(this, 'workers-delete-python')">Python</button>
+                    <button onclick="showCode(this, 'workers-delete-typescript')">TypeScript</button>
+                </div>
+
+                <div class="code-block active" id="workers-delete-curl">
+                    <code>curl -X DELETE "https://your-worker.workers.dev/api/cloudflare-sdk/workers/scripts/my-worker" \
+  -H "Authorization: Bearer YOUR_API_KEY"</code>
+                </div>
+
+                <div class="code-block" id="workers-delete-python">
+                    <code>response = requests.delete(
+    "https://your-worker.workers.dev/api/cloudflare-sdk/workers/scripts/my-worker",
+    headers={"Authorization": "Bearer YOUR_API_KEY"}
+)</code>
+                </div>
+
+                <div class="code-block" id="workers-delete-typescript">
+                    <code>await fetch(
+  "https://your-worker.workers.dev/api/cloudflare-sdk/workers/scripts/my-worker",
+  {
+    method: "DELETE",
+    headers: { "Authorization": "Bearer YOUR_API_KEY" }
+  }
+);</code>
+                </div>
+            </div>
+        </section>
+
+        <section id="pages" class="section">
+            <h2>📄 Pages Management</h2>
+            <p>Manage Cloudflare Pages projects and deployments.</p>
+
+            <div class="endpoint">
+                <h3><span class="method post">POST</span>/api/cloudflare-sdk/pages/projects</h3>
+                <p>Create a new Pages project</p>
+
+                <div class="code-selector">
+                    <button class="active" onclick="showCode(this, 'pages-create-curl')">cURL</button>
+                    <button onclick="showCode(this, 'pages-create-python')">Python</button>
+                    <button onclick="showCode(this, 'pages-create-typescript')">TypeScript</button>
+                </div>
+
+                <div class="code-block active" id="pages-create-curl">
+                    <code>curl -X POST "https://your-worker.workers.dev/api/cloudflare-sdk/pages/projects" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-project",
+    "production_branch": "main",
+    "build_config": {
+      "build_command": "npm run build",
+      "destination_dir": "dist"
+    }
+  }'</code>
+                </div>
+
+                <div class="code-block" id="pages-create-python">
+                    <code>response = requests.post(
+    "https://your-worker.workers.dev/api/cloudflare-sdk/pages/projects",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    json={
+        "name": "my-project",
+        "production_branch": "main",
+        "build_config": {
+            "build_command": "npm run build",
+            "destination_dir": "dist"
+        }
+    }
+)</code>
+                </div>
+
+                <div class="code-block" id="pages-create-typescript">
+                    <code>const createProject = await fetch(
+  "https://your-worker.workers.dev/api/cloudflare-sdk/pages/projects",
+  {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer YOUR_API_KEY",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      name: "my-project",
+      production_branch: "main",
+      build_config: {
+        build_command: "npm run build",
+        destination_dir: "dist"
+      }
+    })
+  }
+);</code>
+                </div>
+            </div>
+        </section>
+
+        <section id="storage" class="section">
+            <h2>💾 Storage Management</h2>
+            <p>Manage D1 databases, KV namespaces, and R2 buckets.</p>
+
+            <h3>Available Storage Services</h3>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h4>D1 - SQL Database</h4>
+                    <p><span class="badge">GET</span> /api/cloudflare-sdk/storage/d1/databases</p>
+                </div>
+                <div class="feature-card">
+                    <h4>KV - Key-Value Store</h4>
+                    <p><span class="badge">GET</span> /api/cloudflare-sdk/storage/kv/namespaces</p>
+                    <p><span class="badge">POST</span> /api/cloudflare-sdk/storage/kv/namespaces</p>
+                </div>
+                <div class="feature-card">
+                    <h4>R2 - Object Storage</h4>
+                    <p><span class="badge">GET</span> /api/cloudflare-sdk/storage/r2/buckets</p>
+                    <p><span class="badge">POST</span> /api/cloudflare-sdk/storage/r2/buckets</p>
+                </div>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method post">POST</span>/api/cloudflare-sdk/storage/kv/namespaces</h3>
+                <p>Create a KV namespace</p>
+
+                <div class="code-selector">
+                    <button class="active" onclick="showCode(this, 'kv-create-curl')">cURL</button>
+                    <button onclick="showCode(this, 'kv-create-python')">Python</button>
+                    <button onclick="showCode(this, 'kv-create-typescript')">TypeScript</button>
+                </div>
+
+                <div class="code-block active" id="kv-create-curl">
+                    <code>curl -X POST "https://your-worker.workers.dev/api/cloudflare-sdk/storage/kv/namespaces" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "my-kv-store"}'</code>
+                </div>
+
+                <div class="code-block" id="kv-create-python">
+                    <code>response = requests.post(
+    "https://your-worker.workers.dev/api/cloudflare-sdk/storage/kv/namespaces",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    json={"title": "my-kv-store"}
+)</code>
+                </div>
+
+                <div class="code-block" id="kv-create-typescript">
+                    <code>await fetch(
+  "https://your-worker.workers.dev/api/cloudflare-sdk/storage/kv/namespaces",
+  {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer YOUR_API_KEY",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ title: "my-kv-store" })
+  }
+);</code>
+                </div>
+            </div>
+        </section>
+
+        <section id="flows" class="section">
+            <h2>🔄 Workflow Automation</h2>
+            <p>High-level workflow endpoints that combine multiple operations into simple "easy button" flows.</p>
+
+            <div class="highlight">
+                <strong>⚡ Super Easy Button:</strong> Create all your app's bindings with one request and get a ready-to-use wrangler.toml!
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method post">POST</span>/api/flows/advanced/setup-bindings</h3>
+                <p>Create all bindings for your app with consistent naming and get a complete wrangler.toml configuration</p>
+
+                <div class="code-selector">
+                    <button class="active" onclick="showCode(this, 'setup-bindings-curl')">cURL</button>
+                    <button onclick="showCode(this, 'setup-bindings-python')">Python</button>
+                    <button onclick="showCode(this, 'setup-bindings-typescript')">TypeScript</button>
+                </div>
+
+                <div class="code-block active" id="setup-bindings-curl">
+                    <code>curl -X POST "https://your-worker.workers.dev/api/flows/advanced/setup-bindings" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "appName": "my-app",
+    "bindings": ["kv", "d1", "r2", "analytics_engine"]
+  }'
+
+# Response includes wrangler.toml with all bindings configured!</code>
+                </div>
+
+                <div class="code-block" id="setup-bindings-python">
+                    <code>response = requests.post(
+    "https://your-worker.workers.dev/api/flows/advanced/setup-bindings",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    json={
+        "appName": "my-app",
+        "bindings": ["kv", "d1", "r2", "analytics_engine"]
+    }
+)
+
+result = response.json()["result"]
+print("Created bindings:", result["createdBindings"])
+print("\nWrangler config:\n", result["wranglerToml"])</code>
+                </div>
+
+                <div class="code-block" id="setup-bindings-typescript">
+                    <code>const response = await fetch(
+  "https://your-worker.workers.dev/api/flows/advanced/setup-bindings",
+  {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer YOUR_API_KEY",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      appName: "my-app",
+      bindings: ["kv", "d1", "r2", "analytics_engine"]
+    })
+  }
+);
+
+const { result } = await response.json();
+console.log("Wrangler TOML:\n", result.wranglerToml);</code>
+                </div>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method post">POST</span>/api/flows/workers/create_with_github_cicd</h3>
+                <p>Create a Worker with automatic GitHub CI/CD setup</p>
+
+                <div class="code-selector">
+                    <button class="active" onclick="showCode(this, 'cicd-curl')">cURL</button>
+                    <button onclick="showCode(this, 'cicd-python')">Python</button>
+                    <button onclick="showCode(this, 'cicd-typescript')">TypeScript</button>
+                </div>
+
+                <div class="code-block active" id="cicd-curl">
+                    <code>curl -X POST "https://your-worker.workers.dev/api/flows/workers/create_with_github_cicd" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "workerName": "my-worker",
+    "githubOwner": "myorg",
+    "githubRepo": "my-repo",
+    "productionBranch": "main",
+    "buildCommand": "npm run build"
+  }'</code>
+                </div>
+
+                <div class="code-block" id="cicd-python">
+                    <code>response = requests.post(
+    "https://your-worker.workers.dev/api/flows/workers/create_with_github_cicd",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    json={
+        "workerName": "my-worker",
+        "githubOwner": "myorg",
+        "githubRepo": "my-repo",
+        "productionBranch": "main",
+        "buildCommand": "npm run build"
+    }
+)</code>
+                </div>
+
+                <div class="code-block" id="cicd-typescript">
+                    <code>await fetch(
+  "https://your-worker.workers.dev/api/flows/workers/create_with_github_cicd",
+  {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer YOUR_API_KEY",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      workerName: "my-worker",
+      githubOwner: "myorg",
+      githubRepo: "my-repo",
+      productionBranch: "main",
+      buildCommand: "npm run build"
+    })
+  }
+);</code>
+                </div>
+            </div>
+
+            <h3>More Workflow Endpoints</h3>
+            <ul>
+                <li><span class="badge">POST</span> /api/flows/advanced/deploy-worker - Deploy a worker script</li>
+                <li><span class="badge">GET</span> /api/flows/advanced/build-logs/{scriptName} - Get build logs</li>
+                <li><span class="badge">PATCH</span> /api/flows/advanced/build-settings/{scriptName} - Update build settings</li>
+            </ul>
+        </section>
+
+        <section id="mcp" class="section">
+            <h2>🔌 MCP Integration</h2>
+            <p>Model Context Protocol (MCP) allows AI assistants to interact with your Cloudflare infrastructure using natural language.</p>
+
+            <div class="highlight">
+                <strong>Endpoint:</strong> <code>POST /mcp</code><br>
+                <strong>Protocol:</strong> Model Context Protocol (MCP)
+            </div>
+
+            <h3>Setup Instructions by AI Provider</h3>
+
+            <div class="mcp-grid">
+                <div class="mcp-card">
+                    <h4><span class="icon">🤖</span> Claude Desktop</h4>
+                    <p>Add to your Claude Desktop config:</p>
+                    <div class="code-block active">
+                        <code>{
+  "mcpServers": {
+    "cloudflare": {
+      "url": "https://your-worker.workers.dev/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_KEY"
+      }
+    }
+  }
+}</code>
+                    </div>
+                    <p>Config location: <code>~/Library/Application Support/Claude/config.json</code></p>
+                </div>
+
+                <div class="mcp-card">
+                    <h4><span class="icon">✨</span> Cursor</h4>
+                    <p>Add to Cursor settings (Settings → MCP):</p>
+                    <div class="code-block active">
+                        <code>{
+  "mcp.servers": {
+    "cloudflare": {
+      "url": "https://your-worker.workers.dev/mcp",
+      "apiKey": "YOUR_API_KEY"
+    }
+  }
+}</code>
+                    </div>
+                </div>
+
+                <div class="mcp-card">
+                    <h4><span class="icon">🧠</span> GitHub Copilot</h4>
+                    <p>In repository settings, add to <code>.github/copilot-mcp.json</code>:</p>
+                    <div class="code-block active">
+                        <code>{
+  "servers": [{
+    "name": "cloudflare",
+    "url": "https://your-worker.workers.dev/mcp",
+    "auth": {
+      "type": "bearer",
+      "token": "$CLOUDFLARE_API_KEY"
+    }
+  }]
+}</code>
+                    </div>
+                </div>
+
+                <div class="mcp-card">
+                    <h4><span class="icon">🔮</span> Cline (VSCode)</h4>
+                    <p>Add to Cline extension settings:</p>
+                    <div class="code-block active">
+                        <code>{
+  "cline.mcpServers": [{
+    "name": "Cloudflare Manager",
+    "endpoint": "https://your-worker.workers.dev/mcp",
+    "apiKey": "YOUR_API_KEY"
+  }]
+}</code>
+                    </div>
+                </div>
+
+                <div class="mcp-card">
+                    <h4><span class="icon">🌐</span> Agent SDKs</h4>
+                    <p>Use with LangChain, AutoGPT, etc:</p>
+                    <div class="code-block active">
+                        <code>from mcp import MCPClient
+
+client = MCPClient(
+    url="https://your-worker.workers.dev/mcp",
+    headers={"Authorization": "Bearer YOUR_API_KEY"}
+)
+
+tools = client.list_tools()
+result = client.call_tool("cloudflare_list_workers")</code>
+                    </div>
+                </div>
+
+                <div class="mcp-card">
+                    <h4><span class="icon">💎</span> Gemini</h4>
+                    <p>Configure in Google AI Studio or via API:</p>
+                    <div class="code-block active">
+                        <code>const model = genai.getGenerativeModel({
+  model: "gemini-pro",
+  tools: [{
+    function_declarations: [{
+      name: "cloudflare_api",
+      description: "Manage Cloudflare resources",
+      parameters: {
+        type: "object",
+        mcp_endpoint: "https://your-worker.workers.dev/mcp"
+      }
+    }]
+  }]
+});</code>
+                    </div>
+                </div>
+            </div>
+
+            <h3>Available MCP Tools</h3>
+            <ul>
+                <li><strong>cloudflare_list_workers</strong> - List all Workers</li>
+                <li><strong>cloudflare_create_worker</strong> - Create Worker with CI/CD</li>
+                <li><strong>cloudflare_deploy_pages</strong> - Deploy Pages project</li>
+                <li><strong>cloudflare_manage_dns</strong> - Manage DNS records</li>
+                <li><strong>cloudflare_create_tunnel</strong> - Create Cloudflare Tunnel</li>
+            </ul>
+        </section>
+
+        <section id="agent" class="section">
+            <h2>🤖 AI Agent Endpoint</h2>
+            <p>Natural language interface powered by Cloudflare AI, Workers AI, Durable Objects, and Workflows.</p>
+
+            <div class="highlight">
+                <strong>🚀 Coming Soon:</strong> Ask the agent questions in plain English and it will execute the appropriate Cloudflare operations using its built-in tools.
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method post">POST</span>/agent</h3>
+                <p>Send natural language prompts to manage your Cloudflare infrastructure</p>
+
+                <div class="code-selector">
+                    <button class="active" onclick="showCode(this, 'agent-curl')">cURL</button>
+                    <button onclick="showCode(this, 'agent-python')">Python</button>
+                    <button onclick="showCode(this, 'agent-typescript')">TypeScript</button>
+                </div>
+
+                <div class="code-block active" id="agent-curl">
+                    <code>curl -X POST "https://your-worker.workers.dev/agent" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "List all my workers and tell me which ones haven'\''t been deployed in the last 30 days"
+  }'</code>
+                </div>
+
+                <div class="code-block" id="agent-python">
+                    <code>response = requests.post(
+    "https://your-worker.workers.dev/agent",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    json={
+        "prompt": "Create a new KV namespace called 'sessions' and a D1 database called 'users-db'"
+    }
+)
+
+print(response.json()["result"]["message"])</code>
+                </div>
+
+                <div class="code-block" id="agent-typescript">
+                    <code>const response = await fetch(
+  "https://your-worker.workers.dev/agent",
+  {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer YOUR_API_KEY",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      prompt: "Deploy my-app worker and set up CI/CD with my GitHub repo"
+    })
+  }
+);
+
+const { result } = await response.json();
+console.log(result.message);</code>
+                </div>
+            </div>
+
+            <h3>Agent Capabilities</h3>
+            <ul>
+                <li>🔍 Query and analyze your Cloudflare resources</li>
+                <li>⚙️ Deploy and manage Workers, Pages, and Functions</li>
+                <li>🗄️ Create and configure storage bindings (D1, KV, R2)</li>
+                <li>🔐 Manage DNS, tunnels, and Zero Trust Access</li>
+                <li>📊 Generate reports and insights about your infrastructure</li>
+                <li>🔄 Execute complex multi-step workflows</li>
+            </ul>
+
+            <p><strong>Powered by:</strong> Cloudflare Workers AI, Durable Objects for state management, Queues for async operations, and Workflows for multi-step orchestration.</p>
+        </section>
+
+        <section id="rpc" class="section">
+            <h2>⚡ RPC Endpoints</h2>
+            <p>JSON-RPC 2.0 endpoints for service-to-service communication via Workers Service Bindings.</p>
+
+            <div class="endpoint">
+                <h3><span class="method post">POST</span>/rpc/{method}</h3>
+                <p>Execute RPC methods</p>
+
+                <div class="code-block active">
+                    <code>curl -X POST "https://your-worker.workers.dev/rpc/workers.list" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1}'</code>
+                </div>
+            </div>
+
+            <h3>Service Binding Example</h3>
+            <div class="code-block active">
+                <code>// wrangler.toml
+[[services]]
+binding = "CLOUDFLARE_API"
+service = "core-cloudflare-manager-api"
+
+// Your Worker code
+export default {
+  async fetch(request, env) {
+    const workers = await env.CLOUDFLARE_API.listWorkers();
+    return Response.json(workers);
+  }
+}</code>
+            </div>
+        </section>
+
+        <section class="section">
+            <h2>📚 Additional Resources</h2>
+            <ul>
+                <li><a href="/docs">Interactive API Documentation (Swagger UI)</a></li>
+                <li><a href="/openapi.json">OpenAPI 3.1 Specification (JSON)</a></li>
+                <li><a href="/api/audit-logs">Audit Logs</a></li>
+                <li><a href="/health">Health Check</a></li>
+            </ul>
+
+            <h3>Authentication</h3>
+            <p>Set the <code>WORKER_API_KEY</code> secret in your Cloudflare Worker and use it as a Bearer token:</p>
+            <div class="code-block active">
+                <code>wrangler secret put WORKER_API_KEY
+# Enter your secret API key</code>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        function showCode(button, blockId) {
+            // Get parent element and hide all code blocks in that section
+            const parent = button.closest('.endpoint') || button.closest('.section');
+            const codeBlocks = parent.querySelectorAll('.code-block');
+            const buttons = button.parentElement.querySelectorAll('button');
+
+            codeBlocks.forEach(block => block.classList.remove('active'));
+            buttons.forEach(btn => btn.classList.remove('active'));
+
+            document.getElementById(blockId).classList.add('active');
+            button.classList.add('active');
+        }
+    </script>
+</body>
+</html>

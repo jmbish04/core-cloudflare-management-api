@@ -4,20 +4,36 @@ compatibility_date = "2024-06-01"
 compatibility_flags = ["nodejs_compat"]
 
 # Secrets to configure (use: wrangler secret put <NAME>)
-# CLOUDFLARE_API_TOKEN - API token for accessing Cloudflare API
-# CLOUDFLARE_ACCOUNT_ID - Your Cloudflare account ID
-# WORKER_API_KEY - Bearer token for authenticating requests to this proxy worker
+# CF_API_TOKEN - This worker's own Cloudflare API token for making API calls
+# CLIENT_AUTH_TOKEN - Bearer token for authenticating incoming requests to this service
 
-# D1 Database Binding for Audit Logs
+# D1 Database Binding for Token Audit/Inventory
 [[d1_databases]]
-binding = "AUDIT_LOGS_DB"
-database_name = "audit-logs-db"
+binding = "TOKEN_AUDIT_DB"
+database_name = "token-audit-db"
 database_id = "your-database-id-here" # Replace with actual D1 database ID after creation
 migrations_dir = "migrations"
 
-# Analytics Engine Binding for Observability
+# Secret Store Binding for Managed Token Storage
+# Create this in Cloudflare Dashboard: Workers & Pages > KV > Secret Store
+# Then bind it here
+# [[secret_bindings]]
+# name = "MANAGED_SECRETS"
+# Note: Secret Store bindings are configured in dashboard, uncomment when ready
+
+# Durable Object Binding for Log Tailing WebSocket
+[[durable_objects.bindings]]
+name = "LOG_TAILING_DO"
+class_name = "LogTailingDO"
+script_name = "core-cloudflare-manager-api"
+
+# Analytics Engine Binding for Observability (optional)
 [[analytics_engine_datasets]]
 binding = "OBSERVABILITY_AE"
+
+# Scheduled/Cron for TTL cleanup
+[triggers]
+crons = ["0 */6 * * *"] # Every 6 hours
 
 # Environment configuration
 [env.production]

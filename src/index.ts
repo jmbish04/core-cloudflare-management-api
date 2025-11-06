@@ -1,386 +1,323 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import Cloudflare from 'cloudflare';
-import { swaggerUI } from '@hono/swagger-ui';
-import { Env, Variables, PaginationQuerySchema, ErrorResponseSchema, SuccessResponseSchema } from './types';
-import { authMiddleware } from './middleware/auth';
-import { auditLogMiddleware } from './middleware/auditLog';
+import { Env, Variables, generateUUID } from './types';
 
 // Import routers
 import sdkRouter from './routes/sdk/index';
 import flowsRouter from './routes/flows/index';
-import agentRouter from './routes/agent';
 
-const app = new OpenAPIHono<{ Bindings: Env; Variables: Variables }>();
+// Export Durable Object
+export { LogTailingDO } from './logTailingDO';
+
+// Create Hono app
+const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 // CORS middleware
-app.use('*', async (c, next) => {
-  c.header('Access-Control-Allow-Origin', '*');
-  c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+app.use('*', cors());
 
-  if (c.req.method === 'OPTIONS') {
-    return c.text('', 204);
+/**
+ * Authentication Middleware
+ * Validates CLIENT_AUTH_TOKEN for all incoming requests
+ */
+const authMiddleware = async (c: any, next: any) => {
+  const authHeader = c.req.header('Authorization');
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return c.json({ success: false, error: 'Missing or invalid Authorization header' }, 401);
+  }
+
+  const token = authHeader.substring(7);
+
+  if (token !== c.env.CLIENT_AUTH_TOKEN) {
+    return c.json({ success: false, error: 'Invalid authentication token' }, 403);
   }
 
   await next();
-});
+};
 
-// Health check endpoint (no auth required)
+/**
+ * Cloudflare SDK Initialization Middleware
+ * Initializes SDK with worker's own CF_API_TOKEN
+ */
+const cfInitMiddleware = async (c: any, next: any) => {
+  const cf = new Cloudflare({ apiToken: c.env.CF_API_TOKEN });
+
+  // Extract account ID from token or environment
+  // In production, you'd get this from the token or a separate env var
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID || '';
+
+  c.set('cf', cf);
+  c.set('accountId', accountId);
+  c.set('startTime', Date.now());
+  c.set('requestId', generateUUID());
+
+  await next();
+};
+
+// Health check (no auth required)
 app.get('/health', (c) => {
   return c.json({
     status: 'healthy',
+    version: '1.0.0',
     timestamp: new Date().toISOString(),
-    version: '1.0.0',
   });
 });
 
-// Landing page - serve static HTML
-app.get('/', async (c) => {
-  const html = await fetch('https://raw.githubusercontent.com/yourusername/yourrepo/main/public/index.html')
-    .catch(() => null);
-
-  if (html) {
-    return c.html(await html.text());
-  }
-
-  // Fallback to simple response
-  return c.json({
-    name: 'Cloudflare Management API',
-    version: '1.0.0',
-    description: 'A comprehensive proxy API for managing Cloudflare resources',
-    endpoints: {
-      documentation: '/docs',
-      openapi: '/openapi.json',
-      api: '/api',
-      mcp: '/mcp',
-      rpc: '/rpc',
-      agent: '/agent',
-    },
-  });
-});
-
-// Initialize Cloudflare SDK middleware
-app.use('/api/*', async (c, next) => {
-  const apiToken = c.env.CLOUDFLARE_API_TOKEN;
-  const accountId = c.env.CLOUDFLARE_ACCOUNT_ID;
-
-  if (!apiToken || !accountId) {
-    return c.json(
-      {
-        success: false,
-        error: {
-          code: 'CONFIGURATION_ERROR',
-          message: 'Cloudflare API credentials not configured',
-        },
-      },
-      500
-    );
-  }
-
-  const cf = new Cloudflare({ apiToken });
-  c.set('cf', cf);
-  c.set('accountId', accountId);
-  c.set('startTime', Date.now());
-  c.set('requestId', crypto.randomUUID());
-
-  await next();
-});
-
-// Apply authentication and audit logging to API routes
-app.use('/api/*', authMiddleware);
-app.use('/api/*', auditLogMiddleware);
-
-// Audit Logs Query Endpoint
-const auditLogsRoute = createRoute({
-  method: 'get',
-  path: '/api/audit-logs',
-  summary: 'Query Audit Logs',
-  description: 'Retrieve audit logs with pagination',
-  tags: ['Audit'],
-  request: {
-    query: PaginationQuerySchema,
-  },
-  responses: {
-    200: {
-      description: 'Audit logs retrieved',
-      content: {
-        'application/json': {
-          schema: SuccessResponseSchema(
-            z.object({
-              logs: z.array(z.any()),
-              pagination: z.object({
-                page: z.number(),
-                limit: z.number(),
-                total: z.number(),
-              }),
-            })
-          ),
-        },
-      },
-    },
-    500: {
-      description: 'Internal server error',
-      content: {
-        'application/json': {
-          schema: ErrorResponseSchema,
-        },
-      },
-    },
-  },
-});
-
-app.openapi(auditLogsRoute, async (c) => {
-  try {
-    const { page, limit } = c.req.valid('query');
-    const offset = (page - 1) * limit;
-
-    const db = c.env.AUDIT_LOGS_DB;
-
-    // Get total count
-    const countResult = await db.prepare('SELECT COUNT(*) as total FROM audit_logs').first();
-    const total = (countResult?.total as number) || 0;
-
-    // Get paginated results
-    const results = await db
-      .prepare('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ? OFFSET ?')
-      .bind(limit, offset)
-      .all();
-
-    return c.json({
-      success: true,
-      result: {
-        logs: results.results || [],
-        pagination: {
-          page,
-          limit,
-          total,
-        },
-      },
-    });
-  } catch (error: any) {
-    console.error('Error querying audit logs:', error);
-    return c.json(
-      {
-        success: false,
-        error: {
-          code: 'DATABASE_ERROR',
-          message: error.message || 'Failed to query audit logs',
-          details: error,
-        },
-      },
-      500
-    );
-  }
-});
+// Apply auth and CF init to all protected routes
+app.use('/sdk/*', authMiddleware, cfInitMiddleware);
+app.use('/flows/*', authMiddleware, cfInitMiddleware);
+app.use('/mcp', authMiddleware, cfInitMiddleware);
+app.use('/agent', authMiddleware, cfInitMiddleware);
 
 // Mount routers
-app.route('/api/cloudflare-sdk', sdkRouter);
-app.route('/api/flows', flowsRouter);
+app.route('/sdk', sdkRouter);
+app.route('/flows', flowsRouter);
 
-// Mount agent router with SDK initialization
-app.use('/agent', async (c, next) => {
-  const apiToken = c.env.CLOUDFLARE_API_TOKEN;
-  const accountId = c.env.CLOUDFLARE_ACCOUNT_ID;
-
-  if (!apiToken || !accountId) {
-    return c.json(
-      {
-        success: false,
-        error: {
-          code: 'CONFIGURATION_ERROR',
-          message: 'Cloudflare API credentials not configured',
-        },
-      },
-      500
-    );
+/**
+ * WebSocket Endpoint for Real-Time Log Tailing
+ * Primary interface for live communication
+ */
+app.get('/logs/tail', async (c) => {
+  // Auth check
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return c.json({ error: 'Unauthorized' }, 401);
   }
 
-  const cf = new Cloudflare({ apiToken });
-  c.set('cf', cf);
-  c.set('accountId', accountId);
-  c.set('startTime', Date.now());
-  c.set('requestId', crypto.randomUUID());
+  const token = authHeader.substring(7);
+  if (token !== c.env.CLIENT_AUTH_TOKEN) {
+    return c.json({ error: 'Invalid token' }, 403);
+  }
 
-  await next();
-});
-app.use('/agent', authMiddleware);
-app.route('/agent', agentRouter);
+  // Get Durable Object stub
+  const doId = c.env.LOG_TAILING_DO.idFromName('log-tailer');
+  const stub = c.env.LOG_TAILING_DO.get(doId);
 
-// OpenAPI documentation
-app.doc('/openapi.json', {
-  openapi: '3.1.0',
-  info: {
-    title: 'Cloudflare Management API',
-    version: '1.0.0',
-    description: 'A comprehensive proxy API for managing Cloudflare resources with audit logging, OpenAPI documentation, and workflow automation.',
-  },
-  servers: [
-    {
-      url: 'https://your-worker.your-subdomain.workers.dev',
-      description: 'Production',
-    },
-    {
-      url: 'http://localhost:8787',
-      description: 'Local Development',
-    },
-  ],
-  tags: [
-    { name: 'Workers', description: 'Cloudflare Workers management' },
-    { name: 'Pages', description: 'Cloudflare Pages management' },
-    { name: 'Tunnels', description: 'Cloudflare Tunnels management' },
-    { name: 'API Tokens', description: 'API token management' },
-    { name: 'DNS', description: 'DNS record management' },
-    { name: 'Access', description: 'Zero Trust Access management' },
-    { name: 'Zones', description: 'Zone management' },
-    { name: 'Storage - D1', description: 'D1 database management' },
-    { name: 'Storage - KV', description: 'KV namespace management' },
-    { name: 'Storage - R2', description: 'R2 bucket management' },
-    { name: 'Flows', description: 'Workflow automation' },
-    { name: 'Flows - Advanced', description: 'Advanced workflow automation' },
-    { name: 'Audit', description: 'Audit log queries' },
-    { name: 'AI Agent', description: 'Natural language AI agent interface' },
-  ],
-  components: {
-    securitySchemes: {
-      bearerAuth: {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'API Key',
-        description: 'Use your WORKER_API_KEY as the bearer token',
-      },
-    },
-  },
-  security: [
-    {
-      bearerAuth: [],
-    },
-  ],
+  // Forward WebSocket upgrade request to Durable Object
+  return stub.fetch(c.req.raw);
 });
 
-// Swagger UI
-app.get('/docs', swaggerUI({ url: '/openapi.json' }));
+/**
+ * Publish log entry (used internally or by other workers)
+ */
+app.post('/logs/publish', authMiddleware, async (c) => {
+  try {
+    const logEntry = await c.req.text();
 
-// MCP Server Endpoint - Model Context Protocol
-app.post('/mcp', authMiddleware, async (c) => {
+    // Get Durable Object stub
+    const doId = c.env.LOG_TAILING_DO.idFromName('log-tailer');
+    const stub = c.env.LOG_TAILING_DO.get(doId);
+
+    // Forward to Durable Object
+    await stub.fetch(new Request('http://do/publish', {
+      method: 'POST',
+      body: logEntry,
+    }));
+
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+/**
+ * MCP (Model Context Protocol) Server Endpoint
+ * Enables AI assistant integration
+ */
+app.post('/mcp', async (c) => {
   try {
     const body = await c.req.json();
     const { method, params } = body;
 
-    // MCP protocol implementation
     switch (method) {
       case 'tools/list':
         return c.json({
           tools: [
+            {
+              name: 'cloudflare_create_managed_token',
+              description: 'Create a Cloudflare API token with intelligent management (stored securely, audited, TTL support)',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', description: 'Token name' },
+                  purpose: { type: 'string', description: 'What this token will be used for' },
+                  permissions: { type: 'array', description: 'Permission IDs' },
+                  ttl_days: { type: 'number', description: 'Days until expiration' },
+                },
+                required: ['name', 'purpose', 'permissions'],
+              },
+            },
             {
               name: 'cloudflare_list_workers',
               description: 'List all Cloudflare Workers',
               inputSchema: { type: 'object', properties: {} },
             },
             {
-              name: 'cloudflare_create_worker',
-              description: 'Create a new Cloudflare Worker with GitHub CI/CD',
-              inputSchema: {
-                type: 'object',
-                properties: {
-                  workerName: { type: 'string' },
-                  githubOwner: { type: 'string' },
-                  githubRepo: { type: 'string' },
-                },
-                required: ['workerName', 'githubOwner', 'githubRepo'],
-              },
-            },
-            {
-              name: 'cloudflare_deploy_pages',
-              description: 'Deploy a Cloudflare Pages project',
+              name: 'cloudflare_create_project',
+              description: 'Create complete project with bindings and CI/CD',
               inputSchema: {
                 type: 'object',
                 properties: {
                   projectName: { type: 'string' },
+                  bindings: { type: 'array', items: { type: 'string' } },
+                  githubRepo: { type: 'string' },
+                  githubOwner: { type: 'string' },
                 },
                 required: ['projectName'],
               },
             },
-            // Add more tools...
           ],
         });
 
       case 'tools/call':
+        // Route to appropriate endpoint based on tool name
         const toolName = params.name;
         const toolParams = params.arguments;
 
-        // Route to appropriate endpoint
-        // This is a simplified implementation
+        // Forward to appropriate internal endpoint
+        // In production, you'd make actual API calls here
         return c.json({
-          content: [
-            {
-              type: 'text',
-              text: `Tool ${toolName} executed with params ${JSON.stringify(toolParams)}`,
-            },
-          ],
+          content: [{
+            type: 'text',
+            text: `Executed ${toolName} with params: ${JSON.stringify(toolParams)}`,
+          }],
         });
 
       default:
-        return c.json({ error: 'Unknown method' }, 400);
+        return c.json({ error: 'Unknown MCP method' }, 400);
     }
   } catch (error: any) {
     return c.json({ error: error.message }, 500);
   }
 });
 
-// RPC Endpoint for Service Bindings
-app.post('/rpc/:method', authMiddleware, async (c) => {
+/**
+ * AI Agent Endpoint
+ * Natural language interface with cloudflare-docs integration
+ */
+app.post('/agent', async (c) => {
   try {
-    const method = c.req.param('method');
-    const body = await c.req.json();
+    const { prompt } = await c.req.json();
+    const cf = c.get('cf');
+    const accountId = c.get('accountId');
 
-    // Initialize Cloudflare SDK
-    const cf = new Cloudflare({ apiToken: c.env.CLOUDFLARE_API_TOKEN });
-    const accountId = c.env.CLOUDFLARE_ACCOUNT_ID;
+    // Basic intent detection (in production, use Workers AI or external LLM)
+    const promptLower = prompt.toLowerCase();
+    const actions: any[] = [];
+    let response = '';
 
-    // Route RPC method to SDK
-    const [resource, action] = method.split('.');
+    if (promptLower.includes('create') && promptLower.includes('token')) {
+      // Token creation flow
+      // In production, agent would:
+      // 1. Use cloudflare-docs MCP to lookup permissions
+      // 2. Determine exact permissions needed
+      // 3. Call /flows/token/create
+      response = `To create a token, I need to know:
+1. What will this token be used for?
+2. Which resources does it need access to?
+3. Should it have an expiration (TTL)?
 
-    // This is a simplified RPC router
-    // In production, you'd have a more sophisticated routing system
+I can use the cloudflare-docs to determine the exact permissions needed. Please provide more details about the token's purpose.`;
+    } else if (promptLower.includes('list') && promptLower.includes('worker')) {
+      const workers = await cf.workers.scripts.list({ account_id: accountId });
+      actions.push({ type: 'list_workers', result: workers });
+      response = `Found ${workers.length} workers in your account.`;
+    } else {
+      response = `I can help you manage your Cloudflare infrastructure. I can:
+
+- Create managed API tokens (with secure storage and auditing)
+- List and manage Workers, Pages, and storage resources
+- Create complete project stacks with bindings
+- Setup CI/CD pipelines
+- And more...
+
+What would you like to do?`;
+    }
 
     return c.json({
-      jsonrpc: '2.0',
+      success: true,
       result: {
-        message: `RPC method ${method} executed`,
-        resource,
-        action,
+        message: response,
+        actions,
       },
-      id: body.id || null,
     });
   } catch (error: any) {
-    return c.json({
-      jsonrpc: '2.0',
-      error: {
-        code: -32603,
-        message: error.message,
-      },
-      id: null,
-    });
+    return c.json({ success: false, error: error.message }, 500);
   }
 });
 
-// Export for service bindings
+/**
+ * Scheduled Handler for TTL Cleanup
+ * Runs periodically to clean up expired tokens
+ */
+export const scheduled: ExportedHandlerScheduledHandler<Env> = async (event, env, ctx) => {
+  try {
+    const cf = new Cloudflare({ apiToken: env.CF_API_TOKEN });
+    const db = env.TOKEN_AUDIT_DB;
+    const secrets = env.MANAGED_SECRETS;
+    const now = new Date().toISOString();
+
+    // Find expired tokens
+    const expiredTokens = await db
+      .prepare("SELECT * FROM managed_tokens WHERE expires_at < ? AND status = 'active'")
+      .bind(now)
+      .all();
+
+    for (const token of expiredTokens.results || []) {
+      try {
+        // Delete from Cloudflare
+        await cf.user.tokens.delete(token.token_id);
+
+        // Delete from secret store
+        await secrets.delete(token.secret_key);
+
+        // Update status
+        await db
+          .prepare("UPDATE managed_tokens SET status = 'expired' WHERE id = ?")
+          .bind(token.id)
+          .run();
+
+        console.log(`Cleaned up expired token: ${token.token_name}`);
+      } catch (error) {
+        console.error(`Failed to cleanup token ${token.id}:`, error);
+      }
+    }
+
+    console.log(`TTL cleanup completed. Processed ${expiredTokens.results?.length || 0} expired tokens.`);
+  } catch (error) {
+    console.error('Error in scheduled TTL cleanup:', error);
+  }
+};
+
+/**
+ * Tail Handler for Log Streaming
+ * Captures logs and streams them to WebSocket clients
+ */
+export const tail: ExportedHandlerTailHandler = async (events, env, ctx) => {
+  try {
+    // Get Durable Object stub
+    const doId = env.LOG_TAILING_DO.idFromName('log-tailer');
+    const stub = env.LOG_TAILING_DO.get(doId);
+
+    // Publish each log entry
+    for (const event of events) {
+      const logEntry = JSON.stringify({
+        timestamp: new Date(event.eventTimestamp).toISOString(),
+        outcome: event.outcome,
+        logs: event.logs,
+        exceptions: event.exceptions,
+      });
+
+      await stub.fetch(new Request('http://do/publish', {
+        method: 'POST',
+        body: logEntry,
+      }));
+    }
+  } catch (error) {
+    console.error('Error in tail handler:', error);
+  }
+};
+
+// Default export for RPC (Service Bindings)
 export default app;
-
-// RPC-style exports for service bindings
-export class CloudflareManagementRPC {
-  constructor(private env: Env) {}
-
-  async listWorkers() {
-    const cf = new Cloudflare({ apiToken: this.env.CLOUDFLARE_API_TOKEN });
-    return await cf.workers.scripts.list({ account_id: this.env.CLOUDFLARE_ACCOUNT_ID });
-  }
-
-  async createWorker(params: any) {
-    const cf = new Cloudflare({ apiToken: this.env.CLOUDFLARE_API_TOKEN });
-    // Implementation
-    return { success: true };
-  }
-
-  // Add more RPC methods...
-}

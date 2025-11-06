@@ -19,7 +19,8 @@ tokenFlows.post('/create', async (c) => {
   try {
     const cf = c.get('cf');
     const db = c.env.TOKEN_AUDIT_DB;
-    const secrets = c.env.MANAGED_SECRETS;
+    const accountId = c.get('accountId');
+    const secretStoreId = c.env.MANAGED_SECRETS_STORE;
     const body: CreateTokenRequest = await c.req.json();
 
     // Step 1: Check token count and enforce 50-token limit
@@ -76,10 +77,14 @@ tokenFlows.post('/create', async (c) => {
       );
     }
 
-    // Step 3: Store token value in MANAGED_SECRETS
+    // Step 3: Store token value in Secret Store via SDK
     const secretKey = `MANAGED_TOKEN_${body.name.toUpperCase().replace(/[^A-Z0-9_]/g, '_')}`;
     try {
-      await secrets.put(secretKey, tokenResponse.value);
+      await cf.accounts.secrets.create(accountId, secretStoreId, {
+        name: secretKey,
+        text: tokenResponse.value,
+        type: 'secret_text',
+      });
     } catch (error: any) {
       // Rollback: Delete the token we just created
       console.error('Failed to save token to Secret Store, rolling back:', error);
@@ -150,7 +155,7 @@ tokenFlows.post('/create', async (c) => {
       console.error('Failed to save token metadata to D1, rolling back:', error);
       try {
         await cf.user.tokens.delete(tokenResponse.id);
-        await secrets.delete(secretKey);
+        await cf.accounts.secrets.delete(accountId, secretStoreId, secretKey);
       } catch (rollbackError) {
         console.error('Rollback failed:', rollbackError);
       }
@@ -189,8 +194,10 @@ tokenFlows.post('/create', async (c) => {
 // Get managed token (retrieves actual value from secret store)
 tokenFlows.get('/:tokenId/value', async (c) => {
   try {
+    const cf = c.get('cf');
     const db = c.env.TOKEN_AUDIT_DB;
-    const secrets = c.env.MANAGED_SECRETS;
+    const accountId = c.get('accountId');
+    const secretStoreId = c.env.MANAGED_SECRETS_STORE;
     const tokenId = c.req.param('tokenId');
 
     // Get token metadata
@@ -207,8 +214,12 @@ tokenFlows.get('/:tokenId/value', async (c) => {
       return c.json({ success: false, error: `Token is ${record.status}` }, 400);
     }
 
-    // Retrieve actual token value
-    const tokenValue = await secrets.get(record.secret_key);
+    // Retrieve actual token value from Secret Store
+    const secretResponse = await cf.accounts.secrets.get(
+      accountId,
+      secretStoreId,
+      record.secret_key
+    );
 
     // Update last_used_at and use_count
     await db
@@ -219,7 +230,7 @@ tokenFlows.get('/:tokenId/value', async (c) => {
     return c.json({
       success: true,
       result: {
-        value: tokenValue,
+        value: secretResponse.value || secretResponse.text,
         metadata: record,
       },
     });
@@ -257,7 +268,8 @@ tokenFlows.delete('/:tokenId', async (c) => {
   try {
     const cf = c.get('cf');
     const db = c.env.TOKEN_AUDIT_DB;
-    const secrets = c.env.MANAGED_SECRETS;
+    const accountId = c.get('accountId');
+    const secretStoreId = c.env.MANAGED_SECRETS_STORE;
     const tokenId = c.req.param('tokenId');
 
     // Get token record
@@ -274,7 +286,7 @@ tokenFlows.delete('/:tokenId', async (c) => {
     await cf.user.tokens.delete(record.token_id);
 
     // Delete from secret store
-    await secrets.delete(record.secret_key);
+    await cf.accounts.secrets.delete(accountId, secretStoreId, record.secret_key);
 
     // Update status in D1
     await db
@@ -296,7 +308,8 @@ tokenFlows.post('/cleanup', async (c) => {
   try {
     const cf = c.get('cf');
     const db = c.env.TOKEN_AUDIT_DB;
-    const secrets = c.env.MANAGED_SECRETS;
+    const accountId = c.get('accountId');
+    const secretStoreId = c.env.MANAGED_SECRETS_STORE;
     const now = new Date().toISOString();
 
     // Find expired tokens
@@ -313,7 +326,7 @@ tokenFlows.post('/cleanup', async (c) => {
         await cf.user.tokens.delete(token.token_id);
 
         // Delete from secret store
-        await secrets.delete(token.secret_key);
+        await cf.accounts.secrets.delete(accountId, secretStoreId, token.secret_key);
 
         // Update status
         await db

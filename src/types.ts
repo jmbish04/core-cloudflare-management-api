@@ -2,13 +2,14 @@ import Cloudflare from 'cloudflare';
 
 // Environment bindings
 export interface Env {
-  // Secrets
-  CF_API_TOKEN: string; // Worker's own Cloudflare API token
+  // Secret Store Bindings
+  CLOUDFLARE_ACCOUNT_ID: string; // Cloudflare Account ID
+  CLOUDFLARE_TOKEN: string; // Worker's own Cloudflare API token
   CLIENT_AUTH_TOKEN: string; // Auth token for incoming requests
+  MANAGED_SECRETS_STORE: string; // Secret Store ID for managed token storage
 
   // Bindings
   TOKEN_AUDIT_DB: D1Database; // D1 for token inventory/audit
-  MANAGED_SECRETS: any; // Secret Store for storing token values
   LOG_TAILING_DO: DurableObjectNamespace; // Durable Object for WebSocket log tailing
 
   // Optional

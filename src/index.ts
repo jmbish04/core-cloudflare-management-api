@@ -38,14 +38,13 @@ const authMiddleware = async (c: any, next: any) => {
 
 /**
  * Cloudflare SDK Initialization Middleware
- * Initializes SDK with worker's own CF_API_TOKEN
+ * Initializes SDK with worker's own CLOUDFLARE_TOKEN
  */
 const cfInitMiddleware = async (c: any, next: any) => {
-  const cf = new Cloudflare({ apiToken: c.env.CF_API_TOKEN });
+  const cf = new Cloudflare({ apiToken: c.env.CLOUDFLARE_TOKEN });
 
-  // Extract account ID from token or environment
-  // In production, you'd get this from the token or a separate env var
-  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID || '';
+  // Extract account ID from environment
+  const accountId = c.env.CLOUDFLARE_ACCOUNT_ID;
 
   c.set('cf', cf);
   c.set('accountId', accountId);
@@ -253,9 +252,9 @@ What would you like to do?`;
  */
 export const scheduled: ExportedHandlerScheduledHandler<Env> = async (event, env, ctx) => {
   try {
-    const cf = new Cloudflare({ apiToken: env.CF_API_TOKEN });
+    const cf = new Cloudflare({ apiToken: env.CLOUDFLARE_TOKEN });
     const db = env.TOKEN_AUDIT_DB;
-    const secrets = env.MANAGED_SECRETS;
+    const accountId = env.CLOUDFLARE_ACCOUNT_ID;
     const now = new Date().toISOString();
 
     // Find expired tokens
@@ -269,8 +268,16 @@ export const scheduled: ExportedHandlerScheduledHandler<Env> = async (event, env
         // Delete from Cloudflare
         await cf.user.tokens.delete(token.token_id);
 
-        // Delete from secret store
-        await secrets.delete(token.secret_key);
+        // Delete from secret store via API
+        try {
+          await cf.accounts.secrets.delete(
+            accountId,
+            env.MANAGED_SECRETS_STORE,
+            token.secret_key
+          );
+        } catch (secretError) {
+          console.error(`Failed to delete secret ${token.secret_key}:`, secretError);
+        }
 
         // Update status
         await db

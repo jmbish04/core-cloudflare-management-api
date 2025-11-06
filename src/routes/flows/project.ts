@@ -280,4 +280,206 @@ projectFlows.get('/:projectName/status', async (c) => {
   }
 });
 
+// Create complete project with GitHub repo creation
+projectFlows.post('/create-with-github', async (c) => {
+  try {
+    const cf = c.get('cf');
+    const accountId = c.get('accountId');
+    const body = await c.req.json();
+
+    const {
+      projectName,
+      bindings = [],
+      githubOwner,
+      githubRepo,
+      githubDescription = '',
+      githubPrivate = true,
+      initializeWithReadme = true,
+      coreGithubApiUrl, // URL to core-github-api service
+      productionBranch = 'main',
+      buildCommand = '',
+      deployCommand = 'npx wrangler deploy',
+    } = body;
+
+    const result: any = {
+      projectName,
+      steps_completed: [],
+      errors: [],
+      created_resources: [],
+    };
+
+    // Step 1: Create GitHub repository via core-github-api
+    if (coreGithubApiUrl) {
+      try {
+        const githubApiResponse = await fetch(`${coreGithubApiUrl}/repos/create`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: c.req.header('Authorization') || '',
+          },
+          body: JSON.stringify({
+            owner: githubOwner,
+            name: githubRepo,
+            description: githubDescription,
+            private: githubPrivate,
+            auto_init: initializeWithReadme,
+          }),
+        });
+
+        if (!githubApiResponse.ok) {
+          const errorData = await githubApiResponse.json();
+          throw new Error(errorData.error || 'Failed to create GitHub repository');
+        }
+
+        const githubResult = await githubApiResponse.json();
+        result.github_repo = githubResult.result;
+        result.steps_completed.push('github_repo_created');
+      } catch (error: any) {
+        result.errors.push({
+          step: 'github_repo_creation',
+          error: error.message,
+        });
+        return c.json(
+          {
+            success: false,
+            error: 'Failed to create GitHub repository',
+            details: error.message,
+            partial_result: result,
+          },
+          500
+        );
+      }
+    }
+
+    // Step 2: Create bindings
+    const wranglerBindings: string[] = [];
+
+    for (const bindingType of bindings) {
+      try {
+        switch (bindingType) {
+          case 'kv': {
+            const namespace = await cf.kv.namespaces.create({
+              account_id: accountId,
+              title: `${projectName}-kv`,
+            });
+            result.created_resources.push({ type: 'kv', id: namespace.id, name: `${projectName}-kv` });
+            wranglerBindings.push(`[[kv_namespaces]]
+binding = "${projectName.toUpperCase()}_KV"
+id = "${namespace.id}"`);
+            break;
+          }
+
+          case 'd1': {
+            const database = await cf.d1.database.create({
+              account_id: accountId,
+              name: `${projectName}-db`,
+            });
+            result.created_resources.push({ type: 'd1', id: database.uuid, name: `${projectName}-db` });
+            wranglerBindings.push(`[[d1_databases]]
+binding = "${projectName.toUpperCase()}_DB"
+database_name = "${projectName}-db"
+database_id = "${database.uuid}"`);
+            break;
+          }
+
+          case 'r2': {
+            const bucket = await cf.r2.buckets.create({
+              account_id: accountId,
+              name: `${projectName.toLowerCase()}-storage`,
+            });
+            result.created_resources.push({ type: 'r2', id: bucket.name, name: `${projectName}-storage` });
+            wranglerBindings.push(`[[r2_buckets]]
+binding = "${projectName.toUpperCase()}_STORAGE"
+bucket_name = "${bucket.name}"`);
+            break;
+          }
+
+          case 'analytics_engine': {
+            result.created_resources.push({ type: 'analytics_engine', name: `${projectName}-analytics` });
+            wranglerBindings.push(`[[analytics_engine_datasets]]
+binding = "${projectName.toUpperCase()}_ANALYTICS"`);
+            break;
+          }
+
+          case 'queue': {
+            result.created_resources.push({ type: 'queue', name: `${projectName}-queue` });
+            wranglerBindings.push(`[[queues.producers]]
+binding = "${projectName.toUpperCase()}_QUEUE"
+queue = "${projectName.toLowerCase()}-queue"`);
+            break;
+          }
+        }
+      } catch (error: any) {
+        console.error(`Error creating ${bindingType} binding:`, error);
+        result.errors.push({
+          step: `create_${bindingType}_binding`,
+          error: error.message,
+        });
+      }
+    }
+
+    result.steps_completed.push('bindings_created');
+
+    // Step 3: Setup CI/CD if GitHub info provided
+    if (githubRepo && githubOwner) {
+      try {
+        const repoConnection = await cf.workers.builds.repoConnections.create({
+          account_id: accountId,
+          repo_owner: githubOwner,
+          repo_name: githubRepo,
+        });
+
+        const trigger = await cf.workers.builds.triggers.create({
+          account_id: accountId,
+          repo_connection_uuid: repoConnection.uuid || repoConnection.id,
+          external_script_id: projectName,
+          branch_includes: [productionBranch],
+          build_command: buildCommand,
+          deploy_command: deployCommand,
+          root_dir: '/',
+          trigger_name: `${projectName}-cicd`,
+        });
+
+        result.cicd = {
+          repo_connection_uuid: repoConnection.uuid || repoConnection.id,
+          trigger_id: trigger.id,
+        };
+        result.steps_completed.push('cicd_configured');
+      } catch (error: any) {
+        console.error('Error setting up CI/CD:', error);
+        result.errors.push({
+          step: 'cicd_setup',
+          error: error.message,
+        });
+      }
+    }
+
+    // Step 4: Generate wrangler.toml
+    const wranglerToml = `name = "${projectName.toLowerCase()}"
+main = "src/index.ts"
+compatibility_date = "2024-06-01"
+
+${wranglerBindings.join('\n\n')}
+`;
+
+    result.wranglerToml = wranglerToml;
+    result.steps_completed.push('wrangler_toml_generated');
+
+    return c.json(
+      {
+        success: result.errors.length === 0,
+        result,
+        message:
+          result.errors.length === 0
+            ? `Project ${projectName} created with GitHub repo and ${result.created_resources.length} bindings`
+            : 'Project partially created with errors',
+      },
+      result.errors.length === 0 ? 201 : 207
+    );
+  } catch (error: any) {
+    console.error('Error in create-with-github flow:', error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
 export default projectFlows;

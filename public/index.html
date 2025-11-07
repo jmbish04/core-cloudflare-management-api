@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloudflare WaaS - Health Dashboard</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Cloudflare Worker Management API</h1>
+            <p class="subtitle">Wrangler as a Service - Health Dashboard</p>
+        </header>
+
+        <div class="status-card">
+            <div class="status-header">
+                <h2>System Status</h2>
+                <button id="runHealthCheck" class="btn-primary">Run Health Check</button>
+            </div>
+
+            <div id="loading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Running health check...</p>
+            </div>
+
+            <div id="healthStatus" class="health-status">
+                <div class="status-badge" id="statusBadge">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Loading...</span>
+                </div>
+                <div class="status-info">
+                    <div class="stat">
+                        <span class="stat-label">Total Endpoints</span>
+                        <span class="stat-value" id="totalEndpoints">-</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Healthy</span>
+                        <span class="stat-value success" id="healthyEndpoints">-</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Unhealthy</span>
+                        <span class="stat-value error" id="unhealthyEndpoints">-</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Response Time</span>
+                        <span class="stat-value" id="responseTime">-</span>
+                    </div>
+                </div>
+                <div class="last-check">
+                    Last checked: <span id="lastCheck">Never</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="results-section">
+            <h2>Endpoint Health</h2>
+            <div class="category-filters">
+                <button class="filter-btn active" data-category="all">All</button>
+                <button class="filter-btn" data-category="meta">Meta</button>
+                <button class="filter-btn" data-category="sdk">SDK</button>
+                <button class="filter-btn" data-category="flows">Flows</button>
+                <button class="filter-btn" data-category="health">Health</button>
+            </div>
+            <div id="endpointResults" class="endpoint-results"></div>
+        </div>
+
+        <div class="api-docs-section">
+            <h2>API Documentation</h2>
+            <div class="docs-grid">
+                <a href="/openapi.json" class="doc-card" target="_blank">
+                    <h3>OpenAPI JSON</h3>
+                    <p>OpenAPI 3.1.0 specification in JSON format</p>
+                </a>
+                <a href="/openapi.yaml" class="doc-card" target="_blank">
+                    <h3>OpenAPI YAML</h3>
+                    <p>OpenAPI 3.1.0 specification in YAML format</p>
+                </a>
+                <a href="/mcp" class="doc-card">
+                    <h3>MCP Server</h3>
+                    <p>Model Context Protocol for AI agents</p>
+                </a>
+            </div>
+        </div>
+
+        <div class="features-section">
+            <h2>Available Services</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <h3>🎯 Worker Deployment</h3>
+                    <p>Deploy workers from content, canvas, or full config with assets and bindings support</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🔐 Token Management</h3>
+                    <p>Secure token creation with audit trails and automatic TTL cleanup</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🔄 CI/CD Integration</h3>
+                    <p>Setup GitHub CI/CD, manage builds, and deploy automatically</p>
+                </div>
+                <div class="feature-card">
+                    <h3>💾 Storage Management</h3>
+                    <p>Create and manage KV namespaces, D1 databases, and R2 buckets</p>
+                </div>
+                <div class="feature-card">
+                    <h3>📊 Health Monitoring</h3>
+                    <p>Monitor worker health, check deployments, and review observability logs</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🤖 AI Agent Integration</h3>
+                    <p>MCP server for Claude Code, Codex CLI, and other AI assistants</p>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>&copy; 2024 Cloudflare WaaS. Built with Cloudflare Workers.</p>
+        </footer>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>

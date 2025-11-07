@@ -1,0 +1,68 @@
+name = "core-cloudflare-manager-api"
+main = "src/index.ts"
+compatibility_date = "2024-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 Database Binding for Token Audit/Inventory
+[[d1_databases]]
+binding = "TOKEN_AUDIT_DB"
+database_name = "token-audit-db"
+database_id = "your-database-id-here" # Replace with actual D1 database ID after creation
+migrations_dir = "migrations"
+
+# Secret Store Bindings
+[[secrets_store_secrets]]
+binding = "CLOUDFLARE_ACCOUNT_ID"
+store_id = "8c42fa70938644e0a8a109744467375f"
+secret_name = "CLOUDFLARE_ACCOUNT_ID"
+
+[[secrets_store_secrets]]
+binding = "CLOUDFLARE_TOKEN"
+store_id = "8c42fa70938644e0a8a109744467375f"
+secret_name = "CLOUDFLARE_API_KEY__CORE_API_WORKER"
+
+[[secrets_store_secrets]]
+binding = "CLIENT_AUTH_TOKEN"
+store_id = "8c42fa70938644e0a8a109744467375f"
+secret_name = "CLIENT_AUTH_TOKEN"
+
+[[secrets_store_secrets]]
+binding = "MANAGED_SECRETS_STORE"
+store_id = "8c42fa70938644e0a8a109744467375f"
+secret_name = "MANAGED_SECRETS_STORE"
+
+# Durable Object Binding for Log Tailing WebSocket
+[[durable_objects.bindings]]
+name = "LOG_TAILING_DO"
+class_name = "LogTailingDO"
+script_name = "core-cloudflare-manager-api"
+
+# Analytics Engine Binding for Observability (optional)
+[[analytics_engine_datasets]]
+binding = "OBSERVABILITY_AE"
+
+# Static Assets Configuration (Frontend Dashboard)
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Scheduled/Cron for TTL cleanup and daily health checks
+[triggers]
+crons = [
+  "0 */6 * * *",  # Token TTL cleanup - Every 6 hours
+  "0 0 * * *"      # Daily health check - Midnight UTC
+]
+
+# Environment configuration
+[env.production]
+name = "core-cloudflare-manager-api"
+
+[env.staging]
+name = "core-cloudflare-manager-api-staging"
+
+# Build configuration
+[build]
+command = ""
+
+# Enable node.js compatibility for cloudflare SDK
+node_compat = true

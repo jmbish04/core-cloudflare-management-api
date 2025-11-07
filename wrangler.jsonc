@@ -1,0 +1,92 @@
+{
+  // $schema: "https://developers.cloudflare.com/workers/wrangler/configuration-schema.json",
+  "name": "core-cloudflare-manager-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-06-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  // D1 Database Binding for Token Audit/Inventory
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "core-cloudflare-manager-api",
+      "database_id": "cb8eb377-5687-4c53-8e8d-fddb888e8648",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Secret Store Bindings
+  "secrets_store_secrets": [
+    {
+      "binding": "CLOUDFLARE_ACCOUNT_ID",
+      "store_id": "8c42fa70938644e0a8a109744467375f",
+      "secret_name": "CLOUDFLARE_ACCOUNT_ID"
+    },
+    {
+      "binding": "CLOUDFLARE_TOKEN",
+      "store_id": "8c42fa70938644e0a8a109744467375f",
+      "secret_name": "CLOUDFLARE_API_KEY__CORE_API_WORKER"
+    },
+    {
+      "binding": "CLIENT_AUTH_TOKEN",
+      "store_id": "8c42fa70938644e0a8a109744467375f",
+      "secret_name": "CLIENT_AUTH_TOKEN"
+    }
+    // {
+    //   "binding": "MANAGED_SECRETS_STORE",
+    //   "store_id": "8c42fa70938644e0a8a109744467375f",
+    //   "secret_name": "MANAGED_SECRETS_STORE"
+    // }
+  ],
+  // Durable Object Binding for Log Tailing WebSocket
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "LOG_TAILING_DO",
+        "class_name": "LogTailingDO"
+      }
+    ],
+    // Migration for the DO's internal SQLite database
+    "migrations": [
+      {
+        "tag": "v1", // Initial migration
+        "new_sqlite_classes": [
+          "LogTailingDO"
+        ]
+      }
+    ]
+  },
+  // Analytics Engine Binding for Observability (optional)
+  "analytics_engine_datasets": [
+    {
+      "binding": "OBSERVABILITY_AE"
+    }
+  ],
+  // Static Assets Configuration (Frontend Dashboard)
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  // Scheduled/Cron for TTL cleanup and daily health checks
+  "triggers": {
+    "crons": [
+      "0 */6 * * *", // Token TTL cleanup - Every 6 hours
+      "0 0 * * *"     // Daily health check - Midnight UTC
+    ]
+  },
+  // Environment configuration
+  "env": {
+    "production": {
+      "name": "core-cloudflare-manager-api"
+    },
+    "staging": {
+      "name": "core-cloudflare-manager-api-staging"
+    }
+  },
+  // Build configuration
+  "build": {
+    "command": ""
+  },
+  // Enable node.js compatibility for cloudflare SDK
+  "node_compat": true
+}

@@ -6,6 +6,7 @@ import tokenFlows from './token';
 import projectFlows from './project';
 import healthFlows from './health';
 import cicdFlows from './cicd';
+import deployFlows from './deploy';
 
 const flows = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -14,5 +15,6 @@ flows.route('/token', tokenFlows);
 flows.route('/project', projectFlows);
 flows.route('/health', healthFlows);
 flows.route('/cicd', cicdFlows);
+flows.route('/deploy', deployFlows);
 
 export default flows;

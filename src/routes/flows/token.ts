@@ -78,7 +78,7 @@ tokenFlows.post('/create', async (c) => {
     }
 
     // Step 3: Store token value in Secret Store via SDK
-    const secretKey = `MANAGED_TOKEN_${body.name.toUpperCase().replace(/[^A-Z0-9_]/g, '_')}`;
+    const secretKey = `MANAGED_TOKEN_${tokenResponse.id}`;
     try {
       await cf.accounts.secrets.create(accountId, secretStoreId, {
         name: secretKey,

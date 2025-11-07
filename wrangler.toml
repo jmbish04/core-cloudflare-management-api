@@ -41,9 +41,17 @@ script_name = "core-cloudflare-manager-api"
 [[analytics_engine_datasets]]
 binding = "OBSERVABILITY_AE"
 
-# Scheduled/Cron for TTL cleanup
+# Static Assets Configuration (Frontend Dashboard)
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Scheduled/Cron for TTL cleanup and daily health checks
 [triggers]
-crons = ["0 */6 * * *"] # Every 6 hours
+crons = [
+  "0 */6 * * *",  # Token TTL cleanup - Every 6 hours
+  "0 0 * * *"      # Daily health check - Midnight UTC
+]
 
 # Environment configuration
 [env.production]

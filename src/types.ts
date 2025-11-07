@@ -11,6 +11,7 @@ export interface Env {
   // Bindings
   TOKEN_AUDIT_DB: D1Database; // D1 for token inventory/audit
   LOG_TAILING_DO: DurableObjectNamespace; // Durable Object for WebSocket log tailing
+  ASSETS: Fetcher; // Static assets binding for frontend
 
   // Optional
   OBSERVABILITY_AE?: AnalyticsEngineDataset;

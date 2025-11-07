@@ -6,6 +6,10 @@ import { Env, Variables, generateUUID } from './types';
 // Import routers
 import sdkRouter from './routes/sdk/index';
 import flowsRouter from './routes/flows/index';
+import healthRouter from './routes/health';
+
+// Import services
+import { HealthCheckService } from './services/health-check';
 
 // Export Durable Object
 export { LogTailingDO } from './logTailingDO';
@@ -72,6 +76,47 @@ app.use('/agent', authMiddleware, cfInitMiddleware);
 // Mount routers
 app.route('/sdk', sdkRouter);
 app.route('/flows', flowsRouter);
+app.route('/health', healthRouter);
+
+// Serve OpenAPI endpoints at root level
+app.get('/openapi.json', async (c) => {
+  // Forward to health router
+  return healthRouter.request('/openapi.json', c.req.raw, c.env);
+});
+
+app.get('/openapi.yaml', async (c) => {
+  // Forward to health router
+  return healthRouter.request('/openapi.yaml', c.req.raw, c.env);
+});
+
+// Serve static assets (frontend dashboard)
+app.get('/', async (c) => {
+  try {
+    const url = new URL(c.req.url);
+    const response = await c.env.ASSETS.fetch(new Request(`${url.origin}/index.html`, c.req.raw));
+    return response;
+  } catch (error) {
+    return c.html('<h1>Cloudflare WaaS</h1><p>Welcome to Worker Management API</p>');
+  }
+});
+
+app.get('/styles.css', async (c) => {
+  try {
+    const url = new URL(c.req.url);
+    return await c.env.ASSETS.fetch(new Request(`${url.origin}/styles.css`, c.req.raw));
+  } catch (error) {
+    return c.text('/* CSS not found */', 404);
+  }
+});
+
+app.get('/app.js', async (c) => {
+  try {
+    const url = new URL(c.req.url);
+    return await c.env.ASSETS.fetch(new Request(`${url.origin}/app.js`, c.req.raw));
+  } catch (error) {
+    return c.text('// JS not found', 404);
+  }
+});
 
 /**
  * WebSocket Endpoint for Real-Time Log Tailing
@@ -247,8 +292,8 @@ What would you like to do?`;
 });
 
 /**
- * Scheduled Handler for TTL Cleanup
- * Runs periodically to clean up expired tokens
+ * Scheduled Handler for TTL Cleanup and Health Checks
+ * Runs periodically to clean up expired tokens and perform health checks
  */
 export const scheduled: ExportedHandlerScheduledHandler<Env> = async (event, env, ctx) => {
   try {
@@ -257,7 +302,9 @@ export const scheduled: ExportedHandlerScheduledHandler<Env> = async (event, env
     const accountId = env.CLOUDFLARE_ACCOUNT_ID;
     const now = new Date().toISOString();
 
-    // Find expired tokens
+    console.log(`Scheduled task started at ${now}`);
+
+    // Task 1: Clean up expired tokens (runs every 6 hours)
     const expiredTokens = await db
       .prepare("SELECT * FROM managed_tokens WHERE expires_at < ? AND status = 'active'")
       .bind(now)
@@ -292,8 +339,31 @@ export const scheduled: ExportedHandlerScheduledHandler<Env> = async (event, env
     }
 
     console.log(`TTL cleanup completed. Processed ${expiredTokens.results?.length || 0} expired tokens.`);
+
+    // Task 2: Run daily health check (check if this is daily cron)
+    // Cron patterns: "0 */6 * * *" for TTL cleanup (every 6 hours)
+    //                "0 0 * * *" for daily health check (midnight UTC)
+    // For now, run health check if it's midnight UTC
+    const hour = new Date().getUTCHours();
+    if (hour === 0) {
+      console.log('Running daily health check...');
+      try {
+        // Get the base URL from environment or construct it
+        // In a worker, we don't have a direct way to get the URL, so we'll use a placeholder
+        // You should set this as an environment variable
+        const baseUrl = `https://core-cloudflare-manager-api.${accountId}.workers.dev`;
+        const healthService = new HealthCheckService(env, baseUrl, env.CLIENT_AUTH_TOKEN);
+
+        const healthResult = await healthService.runHealthCheck();
+        await healthService.saveHealthCheck(healthResult);
+
+        console.log(`Daily health check completed. Status: ${healthResult.overall_status}, Healthy: ${healthResult.healthy_endpoints}/${healthResult.total_endpoints}`);
+      } catch (healthError) {
+        console.error('Failed to run daily health check:', healthError);
+      }
+    }
   } catch (error) {
-    console.error('Error in scheduled TTL cleanup:', error);
+    console.error('Error in scheduled handler:', error);
   }
 };
 

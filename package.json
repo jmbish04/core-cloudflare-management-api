@@ -8,8 +8,8 @@
     "deploy": "wrangler deploy",
     "test": "vitest",
     "type-check": "tsc --noEmit",
-    "db:migrate": "wrangler d1 migrations apply TOKEN_AUDIT_DB --local",
-    "db:migrate:remote": "wrangler d1 migrations apply TOKEN_AUDIT_DB --remote"
+    "db:migrate": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
   },
   "keywords": [
     "cloudflare",

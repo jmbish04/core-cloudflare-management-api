@@ -25,7 +25,7 @@ if [ -n "$CURRENT_COMMIT" ]; then
   # Fetch latest to check if there are updates
   cd api-schemas-main
   git fetch origin main 2>/dev/null || true
-  NEW_COMMIT=$(git rev-parse origin/main 2>/dev/null || echo "")
+  REMOTE_COMMIT=$(git rev-parse origin/main 2>/dev/null || echo "")
   cd ..
   
   # If there's a new commit, backup the current version

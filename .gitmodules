@@ -1,0 +1,3 @@
+[submodule "api-schemas-main"]
+	path = api-schemas-main
+	url = https://github.com/cloudflare/api-schemas.git

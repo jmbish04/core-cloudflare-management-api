@@ -322,6 +322,44 @@ core-cloudflare-management-api/
 
 ## 🛠️ Development
 
+### Cloudflare API Schemas
+
+This project uses a [git submodule](https://git-scm.com/book/en/v2/Git-Tools-Submodules) to maintain a link to the official [Cloudflare API schemas repository](https://github.com/cloudflare/api-schemas). The schemas are located in `api-schemas-main/`.
+
+**Initial Setup** (for new clones):
+```bash
+# Clone with submodules
+git clone --recurse-submodules <repo-url>
+
+# Or if already cloned, initialize submodules
+git submodule update --init --recursive
+```
+
+**Update to Latest Schemas**:
+```bash
+# Update to latest version from Cloudflare's repository
+# This automatically backs up the previous version with a date stamp
+npm run update:schemas
+
+# Or manually:
+git submodule update --remote api-schemas-main
+git add api-schemas-main api-schemas-backups
+git commit -m "chore: Update Cloudflare API schemas"
+```
+
+**Version Backups**:
+When updating schemas, the previous version is automatically backed up to `api-schemas-backups/` with a timestamp:
+- Format: `api-schemas-backups/api-schemas-YYYY-MM-DD_HH-MM-SS/`
+- Each backup includes a `.backup-metadata.txt` file with commit information
+- This allows you to reference or restore previous schema versions if needed
+
+**Using the Schemas**:
+The OpenAPI schemas are available at:
+- `api-schemas-main/openapi.json` - Full OpenAPI 3.1 specification (current version)
+- `api-schemas-main/openapi.yaml` - YAML format (current version)
+- `api-schemas-main/common.yaml` - Common schema definitions (current version)
+- `api-schemas-backups/` - Historical versions with date stamps
+
 ### Local Development
 
 ```bash

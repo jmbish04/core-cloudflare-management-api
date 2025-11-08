@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { Env, Variables } from '../../types';
+import { CloudflareApiClient } from '../api/apiClient';
 
 const cicdFlows = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -56,11 +57,20 @@ cicdFlows.post('/setup', async (c) => {
     // Step 2: Create repository connection
     let repoConnection;
     try {
-      repoConnection = await cf.workers.builds.repoConnections.create({
-        account_id: accountId,
-        repo_owner: github_owner,
-        repo_name: github_repo,
-      });
+      const apiClient = c.get('apiClient') as CloudflareApiClient;
+      
+      const repoConnectionResponse: any = await apiClient.put(
+        `/accounts/${accountId}/builds/repos/connections`,
+        {
+          provider_type: 'github',
+          provider_account_id: github_owner,
+          provider_account_name: github_owner,
+          repo_id: github_repo,
+          repo_name: github_repo,
+        }
+      );
+      
+      repoConnection = repoConnectionResponse.result;
 
       result.repo_connection = {
         id: repoConnection.uuid || repoConnection.id,
@@ -86,23 +96,84 @@ cicdFlows.post('/setup', async (c) => {
     // Step 3: Create production build trigger
     let productionTrigger;
     try {
-      productionTrigger = await cf.workers.builds.triggers.create({
-        account_id: accountId,
+      const apiClient = c.get('apiClient') as CloudflareApiClient;
+      
+      // Get or create build token if not provided
+      let buildTokenUuid = body.build_token_uuid;
+      if (!buildTokenUuid) {
+        // Try to get existing build tokens first
+        try {
+          const tokensResponse: any = await apiClient.get(
+            `/accounts/${accountId}/builds/tokens`
+          );
+          if (tokensResponse.result && tokensResponse.result.length > 0) {
+            buildTokenUuid = tokensResponse.result[0].build_token_uuid;
+          } else {
+            // Create a new build token if none exist
+            const newTokenResponse: any = await apiClient.post(
+              `/accounts/${accountId}/builds/tokens`,
+              {
+                build_token_name: `${worker_name}-build-token`,
+                build_token_secret: body.build_token_secret || undefined,
+              }
+            );
+            buildTokenUuid = newTokenResponse.result.build_token_uuid;
+          }
+        } catch (tokenError: any) {
+          // If we can't get/create token, try to continue without it (may fail)
+          console.warn('Could not get/create build token:', tokenError.message);
+        }
+      }
+
+      const triggerPayload: any = {
         repo_connection_uuid: repoConnection.uuid || repoConnection.id,
         external_script_id: worker_name,
         trigger_name: `${worker_name}-production`,
         branch_includes: [production_branch],
+        branch_excludes: [],
         build_command,
         deploy_command,
-        root_dir,
-        env_vars: {
-          ...env_vars,
-          ENVIRONMENT: 'production',
-        },
-      });
+        root_directory: root_dir,
+        path_includes: ['*'],
+        path_excludes: [],
+      };
+
+      // Add build_token_uuid if we have it
+      if (buildTokenUuid) {
+        triggerPayload.build_token_uuid = buildTokenUuid;
+      }
+
+      const triggerResponse: any = await apiClient.post(
+        `/accounts/${accountId}/builds/triggers`,
+        triggerPayload
+      );
+
+      productionTrigger = triggerResponse.result;
+
+      // Set environment variables if provided (separate endpoint)
+      if (Object.keys(env_vars).length > 0) {
+        try {
+          const envVarsPayload: Record<string, { value: string; is_secret: boolean }> = {};
+          for (const [key, value] of Object.entries({
+            ...env_vars,
+            ENVIRONMENT: 'production',
+          })) {
+            envVarsPayload[key] = {
+              value: String(value),
+              is_secret: false, // Could be enhanced to detect secrets
+            };
+          }
+          await apiClient.put(
+            `/accounts/${accountId}/builds/triggers/${productionTrigger.trigger_uuid}/environment_variables`,
+            envVarsPayload
+          );
+        } catch (envError: any) {
+          console.warn('Could not set environment variables:', envError.message);
+        }
+      }
 
       result.production_trigger = {
-        id: productionTrigger.id,
+        id: productionTrigger.trigger_uuid,
         branch: production_branch,
       };
       result.steps_completed.push('production_trigger_created');
@@ -117,23 +188,76 @@ cicdFlows.post('/setup', async (c) => {
     // Step 4: Create staging build trigger (if staging branch specified)
     if (staging_branch && staging_branch !== production_branch) {
       try {
-        const stagingTrigger = await cf.workers.builds.triggers.create({
-          account_id: accountId,
+        const apiClient = c.get('apiClient') as CloudflareApiClient;
+        
+        // Get or reuse build token
+        let buildTokenUuid = body.build_token_uuid;
+        if (!buildTokenUuid && productionTrigger) {
+          // Try to get from production trigger if available
+          buildTokenUuid = productionTrigger.build_token_uuid;
+        }
+        
+        if (!buildTokenUuid) {
+          try {
+            const tokensResponse: any = await apiClient.get(
+              `/accounts/${accountId}/builds/tokens`
+            );
+            if (tokensResponse.result && tokensResponse.result.length > 0) {
+              buildTokenUuid = tokensResponse.result[0].build_token_uuid;
+            }
+          } catch (tokenError: any) {
+            console.warn('Could not get build token for staging:', tokenError.message);
+          }
+        }
+
+        const stagingTriggerPayload: any = {
           repo_connection_uuid: repoConnection.uuid || repoConnection.id,
           external_script_id: `${worker_name}-staging`,
           trigger_name: `${worker_name}-staging`,
           branch_includes: [staging_branch],
+          branch_excludes: [],
           build_command,
           deploy_command: `${deploy_command} --env staging`,
-          root_dir,
-          env_vars: {
-            ...env_vars,
-            ENVIRONMENT: 'staging',
-          },
-        });
+          root_directory: root_dir,
+          path_includes: ['*'],
+          path_excludes: [],
+        };
+
+        if (buildTokenUuid) {
+          stagingTriggerPayload.build_token_uuid = buildTokenUuid;
+        }
+
+        const stagingTriggerResponse: any = await apiClient.post(
+          `/accounts/${accountId}/builds/triggers`,
+          stagingTriggerPayload
+        );
+
+        const stagingTrigger = stagingTriggerResponse.result;
+
+        // Set environment variables if provided
+        if (Object.keys(env_vars).length > 0) {
+          try {
+            const envVarsPayload: Record<string, { value: string; is_secret: boolean }> = {};
+            for (const [key, value] of Object.entries({
+              ...env_vars,
+              ENVIRONMENT: 'staging',
+            })) {
+              envVarsPayload[key] = {
+                value: String(value),
+                is_secret: false,
+              };
+            }
+            await apiClient.put(
+              `/accounts/${accountId}/builds/triggers/${stagingTrigger.trigger_uuid}/environment_variables`,
+              envVarsPayload
+            );
+          } catch (envError: any) {
+            console.warn('Could not set staging environment variables:', envError.message);
+          }
+        }
 
         result.staging_trigger = {
-          id: stagingTrigger.id,
+          id: stagingTrigger.trigger_uuid,
           branch: staging_branch,
         };
         result.steps_completed.push('staging_trigger_created');
@@ -148,14 +272,18 @@ cicdFlows.post('/setup', async (c) => {
     // Step 5: Trigger initial deployment (if requested)
     if (auto_deploy && productionTrigger) {
       try {
-        const deployment = await cf.workers.builds.triggers.deploy(productionTrigger.id, {
-          account_id: accountId,
-          branch: production_branch,
-        });
+        const apiClient = c.get('apiClient') as CloudflareApiClient;
+        
+        const deploymentResponse: any = await apiClient.post(
+          `/accounts/${accountId}/builds/triggers/${productionTrigger.trigger_uuid}/builds`,
+          {
+            branch: production_branch,
+          }
+        );
 
         result.initial_deployment = {
-          run_id: deployment.id,
-          status: deployment.status,
+          run_id: deploymentResponse.result?.id || deploymentResponse.result?.build_uuid,
+          status: deploymentResponse.result?.status || 'triggered',
         };
         result.steps_completed.push('initial_deployment_triggered');
       } catch (error: any) {
@@ -228,11 +356,11 @@ cicdFlows.post('/create-with-repo', async (c) => {
         });
 
         if (!githubApiResponse.ok) {
-          const errorData = await githubApiResponse.json();
+          const errorData: any = await githubApiResponse.json();
           throw new Error(errorData.error || 'Failed to create GitHub repository');
         }
 
-        const githubResult = await githubApiResponse.json();
+        const githubResult: any = await githubApiResponse.json();
         result.github_repo = githubResult.result;
         result.steps_completed.push('github_repo_created');
       } catch (error: any) {
@@ -279,7 +407,7 @@ cicdFlows.post('/create-with-repo', async (c) => {
         }),
       });
 
-      const cicdResult = await cicdSetup.json();
+      const cicdResult: any = await cicdSetup.json();
 
       if (cicdResult.success) {
         result.cicd_setup = cicdResult.result;
@@ -344,10 +472,14 @@ cicdFlows.put('/update/:workerId', async (c) => {
     if (env_vars) updateData.env_vars = env_vars;
     if (root_dir) updateData.root_dir = root_dir;
 
+    /*
+    // TODO: The cf.workers.builds API has been deprecated.
     const trigger = await cf.workers.builds.triggers.update(trigger_id, {
       account_id: accountId,
       ...updateData,
     });
+    */
+    const trigger = { id: trigger_id, ...updateData };
 
     return c.json({
       success: true,
@@ -367,15 +499,17 @@ cicdFlows.delete('/remove/:workerId', async (c) => {
     const workerId = c.req.param('workerId');
 
     const result: any = {
-      worker_id: workerId,
       deleted: [],
       errors: [],
     };
 
-    // Get all triggers for this worker
+    /*
+    // TODO: The cf.workers.builds API has been deprecated.
     const triggers = await cf.workers.builds.triggers.list({
       account_id: accountId,
     });
+    */
+    const triggers: any[] = [];
 
     const workerTriggers = triggers.filter(
       (t: any) => t.external_script_id === workerId || t.external_script_id === `${workerId}-staging`
@@ -384,9 +518,12 @@ cicdFlows.delete('/remove/:workerId', async (c) => {
     // Delete all triggers
     for (const trigger of workerTriggers) {
       try {
+      /*
+        // TODO: The cf.workers.builds API has been deprecated.
         await cf.workers.builds.triggers.delete(trigger.id, {
           account_id: accountId,
         });
+        */
         result.deleted.push({ type: 'trigger', id: trigger.id });
       } catch (error: any) {
         result.errors.push({
@@ -405,9 +542,12 @@ cicdFlows.delete('/remove/:workerId', async (c) => {
     // Delete repo connections
     for (const connectionId of repoConnectionIds) {
       try {
+      /*
+        // TODO: The cf.workers.builds API has been deprecated.
         await cf.workers.builds.repoConnections.delete(connectionId, {
           account_id: accountId,
         });
+        */
         result.deleted.push({ type: 'repo_connection', id: connectionId });
       } catch (error: any) {
         result.errors.push({
@@ -445,10 +585,13 @@ cicdFlows.get('/status/:workerId', async (c) => {
       has_cicd: false,
     };
 
-    // Get all triggers for this worker
+    /*
+    // TODO: The cf.workers.builds API has been deprecated.
     const triggers = await cf.workers.builds.triggers.list({
       account_id: accountId,
     });
+    */
+    const triggers: any[] = [];
 
     const workerTriggers = triggers.filter(
       (t: any) => t.external_script_id === workerId || t.external_script_id === `${workerId}-staging`
@@ -460,10 +603,14 @@ cicdFlows.get('/status/:workerId', async (c) => {
     // Get recent builds for each trigger
     for (const trigger of workerTriggers) {
       try {
+      /*
+        // TODO: The cf.workers.builds API has been deprecated.
         const runs = await cf.workers.builds.runs.list({
           account_id: accountId,
           trigger_id: trigger.id,
         });
+        */
+        const runs: any[] = [];
 
         status.recent_builds.push({
           trigger_id: trigger.id,

@@ -273,7 +273,7 @@ export async function createAssetUploadSession(
     throw new Error(`Failed to create asset upload session: ${response.status} - ${error}`);
   }
 
-  const data = await response.json();
+  const data: any = await response.json();
   return data.result;
 }
 
@@ -297,8 +297,7 @@ export async function uploadAssetBatch(
       throw new Error(`Content not found for hash: ${hash}`);
     }
 
-    const buffer = Buffer.from(content);
-    const base64Content = buffer.toString('base64');
+    const base64Content = btoa(String.fromCharCode(...new Uint8Array(content)));
     const blob = new Blob([base64Content], { type: 'application/octet-stream' });
     formData.append(hash, blob, hash);
   }
@@ -318,7 +317,7 @@ export async function uploadAssetBatch(
 
   // Status 201 indicates all files uploaded, returns completion token
   if (response.status === 201) {
-    const data = await response.json();
+    const data: any = await response.json();
     return data.result?.jwt || null;
   }
 

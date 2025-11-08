@@ -282,8 +282,8 @@ export async function executeMCPTool(
 
     deploy_worker: { method: 'POST', path: '/flows/deploy/from-content' },
     deploy_worker_with_assets: { method: 'POST', path: '/flows/deploy/from-canvas' },
-    list_workers: { method: 'GET', path: '/sdk/workers/scripts' },
-    get_worker: { method: 'GET', path: `/sdk/workers/scripts/${params.script_name}` },
+    list_workers: { method: 'GET', path: '/api/raw/workers/scripts' },
+    get_worker: { method: 'GET', path: `/api/raw/workers/scripts/${params.script_name}` },
     delete_worker: { method: 'DELETE', path: `/flows/deploy/${params.script_name}` },
 
     create_project: { method: 'POST', path: '/flows/project/create' },
@@ -291,27 +291,27 @@ export async function executeMCPTool(
 
     setup_cicd: { method: 'POST', path: '/flows/cicd/setup' },
     get_cicd_status: { method: 'GET', path: `/flows/cicd/status/${params.worker_id}` },
-    get_build_logs: { method: 'GET', path: `/sdk/cicd/runs/${params.run_id}/logs` },
+    get_build_logs: { method: 'GET', path: `/api/raw/cicd/runs/${params.run_id}/logs` },
 
     check_worker_health: { method: 'POST', path: '/flows/health/check-recent-workers' },
     check_ecosystem_health: { method: 'GET', path: `/flows/health/ecosystem/${params.prefix}` },
     get_worker_health: { method: 'GET', path: `/flows/health/worker/${params.script_name}` },
 
-    list_kv_namespaces: { method: 'GET', path: '/sdk/storage/kv/namespaces' },
-    create_kv_namespace: { method: 'POST', path: '/sdk/storage/kv/namespaces' },
-    list_d1_databases: { method: 'GET', path: '/sdk/storage/d1/databases' },
-    create_d1_database: { method: 'POST', path: '/sdk/storage/d1/databases' },
-    list_r2_buckets: { method: 'GET', path: '/sdk/storage/r2/buckets' },
-    create_r2_bucket: { method: 'POST', path: '/sdk/storage/r2/buckets' },
+    list_kv_namespaces: { method: 'GET', path: '/api/raw/storage/kv/namespaces' },
+    create_kv_namespace: { method: 'POST', path: '/api/raw/storage/kv/namespaces' },
+    list_d1_databases: { method: 'GET', path: '/api/raw/storage/d1/databases' },
+    create_d1_database: { method: 'POST', path: '/api/raw/storage/d1/databases' },
+    list_r2_buckets: { method: 'GET', path: '/api/raw/storage/r2/buckets' },
+    create_r2_bucket: { method: 'POST', path: '/api/raw/storage/r2/buckets' },
 
     batch_deploy_workers: { method: 'POST', path: '/flows/deploy/batch' },
 
     create_worker_secret: {
       method: 'PUT',
-      path: `/sdk/workers/scripts/${params.script_name}/secrets/${params.secret_name}`,
+      path: `/api/raw/workers/scripts/${params.script_name}/secrets/${params.secret_name}`,
       transform: (p: any) => ({ text: p.secret_value }),
     },
-    list_worker_secrets: { method: 'GET', path: `/sdk/workers/scripts/${params.script_name}/secrets` },
+    list_worker_secrets: { method: 'GET', path: `/api/raw/workers/scripts/${params.script_name}/secrets` },
 
     run_system_health_check: { method: 'POST', path: '/health/check' },
     get_latest_health_check: { method: 'GET', path: '/health/latest' },

@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1762545442290,
+      "tag": "0000_futuristic_sugar_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1762552310459,
+      "tag": "0001_add_health_test_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1762552414232,
+      "tag": "0002_add_api_permissions_map",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1762552476284,
+      "tag": "0003_add_is_active_to_health_tests",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1762568619667,
+      "tag": "0004_silky_whistler",
+      "breakpoints": true
+    }
+  ]
+}

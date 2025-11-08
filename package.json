@@ -6,9 +6,17 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "deploy:prod": "npm run db:migrate:remote && wrangler deploy --env=production",
+    "deploy:preview": "wrangler deploy --env=staging",
+    "lint": "npm run type-check",
+    "problems": "tsc --noEmit --pretty false",
+    "verify": "npm run lint && npm run problems",
     "test": "vitest",
+    "test:health": "bash ./scripts/health-check.sh",
+    "test:token": "bash ./scripts/test-token.sh",
     "type-check": "tsc --noEmit",
-    "db:migrate": "wrangler d1 migrations apply DB --local",
+    "types": "wrangler types",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
   },
   "keywords": [
@@ -21,13 +29,15 @@
   "license": "MIT",
   "dependencies": {
     "cloudflare": "^3.5.0",
+    "drizzle-kit": "^0.31.6",
+    "drizzle-orm": "^0.44.7",
     "hono": "^4.5.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20240620.0",
+    "patch-package": "^8.0.1",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0",
-    "wrangler": "^3.65.0"
+    "wrangler": "^4.46.0"
   }
 }

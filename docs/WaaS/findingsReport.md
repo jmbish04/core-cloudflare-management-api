@@ -118,7 +118,7 @@ This flow solves your token limit, traceability, and "no copy/paste" problems.
       
       // 3. Store the metadata in D1 for auditing
       try {
-        await c.env.TOKEN_AUDIT_DB.prepare(
+        await c.env.DB.prepare(
           'INSERT INTO managed_tokens (id, name, purpose, secret_name, expires_on) VALUES (?, ?, ?, ?, ?)'
         ).bind(tokenId, name, purpose, secretName, expires_on).run();
       } catch (e) {
@@ -164,7 +164,7 @@ This flow solves your token limit, traceability, and "no copy/paste" problems.
         try {
           // 1. Find expired tokens
           const now = new Date().toISOString();
-          const { results: expiredTokens } = await env.TOKEN_AUDIT_DB.prepare(
+          const { results: expiredTokens } = await env.DB.prepare(
             'SELECT id, secret_name FROM managed_tokens WHERE expires_on < ?'
           ).bind(now).all();
 
@@ -193,7 +193,7 @@ This flow solves your token limit, traceability, and "no copy/paste" problems.
               await env.MANAGED_SECRETS.delete(token.secret_name);
 
               // 4. Delete from D1 Audit Log
-              await env.TOKEN_AUDIT_DB.prepare(
+              await env.DB.prepare(
                 'DELETE FROM managed_tokens WHERE id = ?'
               ).bind(token.id).run();
               

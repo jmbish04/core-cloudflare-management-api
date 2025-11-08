@@ -47,8 +47,10 @@ healthFlows.post('/check-recent-workers', async (c) => {
     // Step 1: Get all workers
     const workers = await cf.workers.scripts.list({ account_id: accountId });
 
-    for (const worker of workers) {
+    const workersList = Array.isArray(workers.result) ? workers.result : [];
+    for (const worker of workersList) {
       const scriptName = worker.id;
+      if (!scriptName) continue;
 
       // Apply filter if provided
       if (filter_pattern && !scriptName.includes(filter_pattern)) {
@@ -64,8 +66,7 @@ healthFlows.post('/check-recent-workers', async (c) => {
       };
 
       try {
-        // Step 2: Get recent deployments
-        const deployments = await cf.workers.deployments.list({
+        const deployments = await (cf.workers.scripts.deployments as any).list({
           account_id: accountId,
           script_name: scriptName,
         } as any);
@@ -85,6 +86,8 @@ healthFlows.post('/check-recent-workers', async (c) => {
         }
 
         // Step 3: Check for build errors via CI/CD
+        /*
+        // TODO: The cf.workers.builds API has been deprecated.
         try {
           const triggers = await cf.workers.builds.triggers.list({
             account_id: accountId,
@@ -129,6 +132,7 @@ healthFlows.post('/check-recent-workers', async (c) => {
         } catch (buildError) {
           console.error(`Failed to check builds for ${scriptName}:`, buildError);
         }
+        */
 
         // Step 4: Check observability logs (if requested and no build errors)
         if (include_observability && healthStatus.build_errors.length === 0) {
@@ -239,7 +243,7 @@ healthFlows.get('/worker/:scriptName', async (c) => {
 
     // Get recent deployments
     try {
-      const deployments = await cf.workers.deployments.list({
+      const deployments = await (cf.workers.scripts.deployments as any).list({
         account_id: accountId,
         script_name: scriptName,
       } as any);
@@ -254,6 +258,8 @@ healthFlows.get('/worker/:scriptName', async (c) => {
     }
 
     // Check for build errors
+    /*
+    // TODO: The cf.workers.builds API has been deprecated.
     try {
       const triggers = await cf.workers.builds.triggers.list({
         account_id: accountId,
@@ -293,6 +299,7 @@ healthFlows.get('/worker/:scriptName', async (c) => {
     } catch (buildError) {
       console.error('Failed to check builds:', buildError);
     }
+    */
 
     // Set to healthy if no errors
     if (
@@ -320,14 +327,16 @@ healthFlows.get('/ecosystem/:prefix', async (c) => {
 
     // Get all workers matching prefix (e.g., "vibesdk-")
     const workers = await cf.workers.scripts.list({ account_id: accountId });
-    const matchingWorkers = workers.filter((w: any) =>
-      w.id.toLowerCase().startsWith(prefix.toLowerCase())
+    const workersList = Array.isArray(workers.result) ? workers.result : [];
+    const matchingWorkers = workersList.filter((w: any) =>
+      w.id && w.id.toLowerCase().startsWith(prefix.toLowerCase())
     );
 
     const results: WorkerHealthStatus[] = [];
 
     for (const worker of matchingWorkers) {
       const scriptName = worker.id;
+      if (!scriptName) continue;
 
       const healthStatus: WorkerHealthStatus = {
         script_name: scriptName,
@@ -339,7 +348,7 @@ healthFlows.get('/ecosystem/:prefix', async (c) => {
 
       try {
         // Get deployments
-        const deployments = await cf.workers.deployments.list({
+        const deployments = await (cf.workers.scripts.deployments as any).list({
           account_id: accountId,
           script_name: scriptName,
         } as any);
@@ -350,6 +359,8 @@ healthFlows.get('/ecosystem/:prefix', async (c) => {
         }
 
         // Quick check for build errors
+        /*
+        // TODO: The cf.workers.builds API has been deprecated.
         const triggers = await cf.workers.builds.triggers.list({
           account_id: accountId,
         });
@@ -371,6 +382,7 @@ healthFlows.get('/ecosystem/:prefix', async (c) => {
             }
           }
         }
+        */
 
         if (
           healthStatus.deployment_status === 'unknown' &&

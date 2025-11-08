@@ -2,11 +2,15 @@
 
 let currentFilter = 'all';
 let latestHealthCheck = null;
+let testsWithResults = [];
 
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', () => {
+    loadTestsWithResults();
     loadLatestHealthCheck();
     setupEventListeners();
+    setupMCPTabs();
+    setupCopyButtons();
 });
 
 // Setup event listeners
@@ -22,29 +26,56 @@ function setupEventListeners() {
             currentFilter = btn.dataset.category;
             filterButtons.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            if (latestHealthCheck) {
-                displayEndpointResults(latestHealthCheck.results);
-            }
+            displayTestsWithResults();
         });
     });
 }
 
-// Load latest health check from D1
+// Load tests with their latest results
+async function loadTestsWithResults() {
+    try {
+        const response = await fetch('/health/tests-with-results');
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText);
+        }
+        const data = await response.json();
+
+        if (data.success && data.result) {
+            testsWithResults = data.result;
+            displayTestsWithResults();
+            updateHealthStatusFromTests();
+        }
+    } catch (error) {
+        console.error('Failed to load tests with results:', error);
+        showErrorToast('Failed to load tests', error.message);
+    }
+}
+
+// Load latest health check from D1 (for backward compatibility)
 async function loadLatestHealthCheck() {
     try {
         const response = await fetch('/health/latest');
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText);
+        }
         const data = await response.json();
 
         if (data.success && data.result) {
             latestHealthCheck = data.result;
-            displayHealthStatus(data.result);
-            displayEndpointResults(data.result.results);
-        } else {
-            showNoDataMessage();
+            // Only update status if we don't have tests with results
+            if (testsWithResults.length === 0) {
+                displayHealthStatus(data.result);
+                displayEndpointResults(data.result.results);
+            }
         }
     } catch (error) {
         console.error('Failed to load health check:', error);
-        showNoDataMessage();
+        // Don't show error if we have tests with results
+        if (testsWithResults.length === 0) {
+            showNoDataMessage();
+        }
     }
 }
 
@@ -62,24 +93,63 @@ async function runHealthCheck() {
         runButton.textContent = 'Running...';
 
         const response = await fetch('/health/check', { method: 'POST' });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText);
+        }
         const data = await response.json();
 
         if (data.success && data.result) {
             latestHealthCheck = data.result;
             displayHealthStatus(data.result);
-            displayEndpointResults(data.result.results);
+            // Reload tests with results to show updated status
+            await loadTestsWithResults();
         } else {
             throw new Error(data.error || 'Health check failed');
         }
     } catch (error) {
         console.error('Health check error:', error);
-        alert('Failed to run health check: ' + error.message);
+        showErrorToast('Failed to run health check', error.message);
     } finally {
         loading.style.display = 'none';
         statusDiv.style.display = 'block';
         runButton.disabled = false;
         runButton.textContent = 'Run Health Check';
     }
+}
+
+// Show an error toast message
+function showErrorToast(title, message) {
+    const toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) {
+        console.error('Toast container not found!');
+        return;
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'error-toast';
+
+    // Sanitize the message to prevent HTML injection
+    const sanitizedMessage = document.createElement('pre');
+    sanitizedMessage.textContent = message;
+
+    toast.innerHTML = `
+        <div class="font-bold">${title}</div>
+        <div class="text-sm mt-1">${sanitizedMessage.innerHTML}</div>
+        <button class="toast-close-btn">&times;</button>
+    `;
+
+    toastContainer.appendChild(toast);
+
+    const closeButton = toast.querySelector('.toast-close-btn');
+    closeButton.addEventListener('click', () => {
+        toast.remove();
+    });
+
+    // Auto-dismiss after 10 seconds
+    setTimeout(() => {
+        toast.remove();
+    }, 10000);
 }
 
 // Display health status
@@ -97,17 +167,148 @@ function displayHealthStatus(healthCheck) {
     statusBadge.querySelector('.status-text').textContent = statusText;
 
     // Update stats
-    totalEndpoints.textContent = healthCheck.total_endpoints;
-    healthyEndpoints.textContent = healthCheck.healthy_endpoints;
-    unhealthyEndpoints.textContent = healthCheck.unhealthy_endpoints;
-    responseTime.textContent = healthCheck.response_time_ms + 'ms';
+    totalEndpoints.textContent = healthCheck.total_endpoints || 0;
+    healthyEndpoints.textContent = healthCheck.healthy_endpoints || 0;
+    unhealthyEndpoints.textContent = healthCheck.unhealthy_endpoints || 0;
+    responseTime.textContent = (healthCheck.avg_response_time || 0).toFixed(0) + 'ms';
 
     // Update last check time
-    const checkTime = new Date(healthCheck.check_time);
+    const checkTime = new Date(healthCheck.checked_at || Date.now());
     lastCheck.textContent = formatRelativeTime(checkTime);
 }
 
-// Display endpoint results
+// Display tests with their latest results
+function displayTestsWithResults() {
+    const container = document.getElementById('endpointResults');
+    container.innerHTML = '';
+
+    // Filter by category
+    const filtered = currentFilter === 'all'
+        ? testsWithResults
+        : testsWithResults.filter(item => item.test.category === currentFilter);
+
+    if (filtered.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: var(--cf-gray); padding: 2rem;">No tests in this category</p>';
+        return;
+    }
+
+    // Create test items with their latest results
+    filtered.forEach(item => {
+        const testItem = createTestItem(item);
+        container.appendChild(testItem);
+    });
+}
+
+// Update health status from tests with results
+function updateHealthStatusFromTests() {
+    if (testsWithResults.length === 0) return;
+
+    const totalTests = testsWithResults.length;
+    let healthy = 0;
+    let unhealthy = 0;
+    let totalResponseTime = 0;
+    let latestRunTime = null;
+
+    testsWithResults.forEach(item => {
+        if (item.latest_result) {
+            if (item.latest_result.outcome === 'pass') {
+                healthy++;
+            } else {
+                unhealthy++;
+            }
+            totalResponseTime += item.latest_result.response_time_ms || 0;
+            
+            const runTime = new Date(item.latest_result.run_at);
+            if (!latestRunTime || runTime > latestRunTime) {
+                latestRunTime = runTime;
+            }
+        }
+    });
+
+    const overallStatus = unhealthy === 0 ? 'pass' : unhealthy === totalTests ? 'fail' : 'degraded';
+    const avgResponseTime = totalTests > 0 ? totalResponseTime / totalTests : 0;
+
+    // Update status badge
+    const statusBadge = document.getElementById('statusBadge');
+    if (statusBadge) {
+        statusBadge.className = 'status-badge ' + overallStatus;
+        const statusText = overallStatus.charAt(0).toUpperCase() + overallStatus.slice(1);
+        statusBadge.querySelector('.status-text').textContent = statusText;
+    }
+
+    // Update stats
+    const totalEndpoints = document.getElementById('totalEndpoints');
+    const healthyEndpoints = document.getElementById('healthyEndpoints');
+    const unhealthyEndpoints = document.getElementById('unhealthyEndpoints');
+    const responseTime = document.getElementById('responseTime');
+    const lastCheck = document.getElementById('lastCheck');
+
+    if (totalEndpoints) totalEndpoints.textContent = totalTests;
+    if (healthyEndpoints) healthyEndpoints.textContent = healthy;
+    if (unhealthyEndpoints) unhealthyEndpoints.textContent = unhealthy;
+    if (responseTime) responseTime.textContent = avgResponseTime.toFixed(0) + 'ms';
+    if (lastCheck && latestRunTime) {
+        lastCheck.textContent = formatRelativeTime(latestRunTime);
+    }
+}
+
+// Create test item with latest result
+function createTestItem(item) {
+    const div = document.createElement('div');
+    div.className = 'endpoint-item';
+
+    const test = item.test;
+    const result = item.latest_result;
+
+    // Determine status
+    const outcome = result ? result.outcome : 'unknown';
+    const statusIcon = outcome === 'pass' ? '✅' : outcome === 'fail' ? '❌' : '⏳';
+    const method = test.http_method || 'GET';
+    const endpointName = test.name || 'Unknown';
+    const statusCode = result ? result.status : 0;
+    const responseTime = result ? result.response_time_ms : 0;
+    const statusText = result ? result.status_text : 'Not tested yet';
+    const description = test.description || '';
+
+    const errorHtml = outcome === 'fail' && result && result.error_message
+        ? '<div style="color: var(--error); font-size: 0.875rem; margin-top: 0.25rem;">' + result.error_message + '</div>'
+        : '';
+
+    const statusCodeHtml = statusCode > 0
+        ? '<div class="response-time" style="font-size: 0.75rem; color: var(--cf-gray);">HTTP ' + statusCode + '</div>'
+        : '';
+    
+    const pathInfo = test.endpoint_path
+        ? '<div style="font-size: 0.75rem; color: var(--cf-gray); margin-top: 0.25rem; font-family: monospace;">' + test.endpoint_path + '</div>'
+        : '';
+
+    const lastRunInfo = result && result.run_at
+        ? '<div style="font-size: 0.75rem; color: var(--cf-gray); margin-top: 0.25rem;">Last run: ' + formatRelativeTime(new Date(result.run_at)) + '</div>'
+        : '<div style="font-size: 0.75rem; color: var(--cf-gray); margin-top: 0.25rem;">Never run</div>';
+
+    div.innerHTML =
+        '<div class="endpoint-info">' +
+            '<div class="endpoint-path">' +
+                '<span class="endpoint-method">' + method + '</span>' +
+                endpointName +
+            '</div>' +
+            pathInfo +
+            (description ? '<div class="endpoint-description" style="font-size: 0.875rem; color: var(--cf-gray); margin-top: 0.25rem;">' + description + '</div>' : '') +
+            lastRunInfo +
+            errorHtml +
+        '</div>' +
+        '<div class="endpoint-status">' +
+            '<span class="status-icon">' + statusIcon + '</span>' +
+            '<div style="text-align: right;">' +
+                (responseTime > 0 ? '<div class="response-time">' + responseTime.toFixed(0) + 'ms</div>' : '<div class="response-time" style="color: var(--cf-gray);">-</div>') +
+                statusCodeHtml +
+            '</div>' +
+        '</div>';
+
+    return div;
+}
+
+// Display endpoint results (legacy function for backward compatibility)
 function displayEndpointResults(results) {
     const container = document.getElementById('endpointResults');
     container.innerHTML = '';
@@ -134,29 +335,42 @@ function createEndpointItem(result) {
     const div = document.createElement('div');
     div.className = 'endpoint-item';
 
-    const statusIcon = result.status === 'success' ? '✅' : '❌';
+    // Map backend fields to frontend format
+    const outcome = result.outcome || (result.status >= 200 && result.status < 300 ? 'pass' : 'fail');
+    const statusIcon = outcome === 'pass' ? '✅' : '❌';
+    const method = result.method || 'GET'; // Get method from result if available
+    const endpointName = result.endpoint || 'Unknown';
+    const statusCode = result.status || 0;
+    const responseTime = result.response_time_ms || 0;
+    const statusText = result.statusText || 'Error';
+    const description = ''; // No description in backend response
 
-    const errorHtml = result.error
-        ? '<div style="color: var(--error); font-size: 0.875rem; margin-top: 0.25rem;">' + result.error + '</div>'
+    const errorHtml = outcome === 'fail' && statusText
+        ? '<div style="color: var(--error); font-size: 0.875rem; margin-top: 0.25rem;">' + statusText + '</div>'
         : '';
 
-    const statusCodeHtml = result.statusCode
-        ? '<div class="response-time">HTTP ' + result.statusCode + '</div>'
+    const statusCodeHtml = statusCode > 0
+        ? '<div class="response-time" style="font-size: 0.75rem; color: var(--cf-gray);">HTTP ' + statusCode + '</div>'
+        : '';
+    
+    const pathInfo = result.path 
+        ? '<div style="font-size: 0.75rem; color: var(--cf-gray); margin-top: 0.25rem; font-family: monospace;">' + result.path + '</div>'
         : '';
 
     div.innerHTML =
         '<div class="endpoint-info">' +
             '<div class="endpoint-path">' +
-                '<span class="endpoint-method">' + result.method + '</span>' +
-                result.endpoint +
+                '<span class="endpoint-method">' + method + '</span>' +
+                endpointName +
             '</div>' +
-            '<div class="endpoint-description">' + result.description + '</div>' +
+            pathInfo +
+            '<div class="endpoint-description">' + description + '</div>' +
             errorHtml +
         '</div>' +
         '<div class="endpoint-status">' +
             '<span class="status-icon">' + statusIcon + '</span>' +
             '<div style="text-align: right;">' +
-                '<div class="response-time">' + result.responseTime + 'ms</div>' +
+                '<div class="response-time">' + responseTime.toFixed(0) + 'ms</div>' +
                 statusCodeHtml +
             '</div>' +
         '</div>';
@@ -202,4 +416,61 @@ function formatRelativeTime(date) {
     } else {
         return 'Just now';
     }
+}
+
+// Setup MCP tabs
+function setupMCPTabs() {
+    const tabs = document.querySelectorAll('.mcp-tab');
+    const panels = document.querySelectorAll('.mcp-panel');
+    
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetTab = tab.dataset.tab;
+            
+            // Update active tab
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            
+            // Update active panel
+            panels.forEach(p => p.classList.remove('active'));
+            const targetPanel = document.getElementById(`${targetTab}-panel`);
+            if (targetPanel) {
+                targetPanel.classList.add('active');
+            }
+        });
+    });
+}
+
+// Setup copy buttons
+function setupCopyButtons() {
+    const copyButtons = document.querySelectorAll('.copy-btn');
+    
+    copyButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const codeId = btn.dataset.copy;
+            const codeElement = document.getElementById(codeId);
+            
+            if (codeElement) {
+                // Get the text content, replacing placeholders with actual values
+                let text = codeElement.textContent;
+                const baseUrl = window.location.origin;
+                text = text.replace(/YOUR_CLIENT_AUTH_TOKEN/g, 'YOUR_CLIENT_AUTH_TOKEN');
+                text = text.replace(/https:\/\/core-cloudflare-manager-api\.hacolby\.workers\.dev\/mcp/g, `${baseUrl}/mcp`);
+                
+                // Copy to clipboard
+                navigator.clipboard.writeText(text).then(() => {
+                    // Show feedback
+                    const originalText = btn.textContent;
+                    btn.textContent = 'Copied!';
+                    btn.style.backgroundColor = 'var(--success)';
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.style.backgroundColor = '';
+                    }, 2000);
+                }).catch(err => {
+                    console.error('Failed to copy:', err);
+                });
+            }
+        });
+    });
 }

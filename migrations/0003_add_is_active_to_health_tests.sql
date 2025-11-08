@@ -1,0 +1,1 @@
+ALTER TABLE `health_tests` ADD `is_active` integer DEFAULT true NOT NULL;

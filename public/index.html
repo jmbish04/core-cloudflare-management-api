@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+    <div id="toast-container"></div>
     <div class="container">
         <header class="header">
             <h1>Cloudflare Worker Management API</h1>
@@ -57,10 +58,9 @@
             <h2>Endpoint Health</h2>
             <div class="category-filters">
                 <button class="filter-btn active" data-category="all">All</button>
-                <button class="filter-btn" data-category="meta">Meta</button>
-                <button class="filter-btn" data-category="sdk">SDK</button>
-                <button class="filter-btn" data-category="flows">Flows</button>
+                <button class="filter-btn" data-category="api">API</button>
                 <button class="filter-btn" data-category="health">Health</button>
+                <button class="filter-btn" data-category="meta">Meta</button>
             </div>
             <div id="endpointResults" class="endpoint-results"></div>
         </div>
@@ -80,6 +80,141 @@
                     <h3>MCP Server</h3>
                     <p>Model Context Protocol for AI agents</p>
                 </a>
+            </div>
+        </div>
+
+        <div class="mcp-setup-section">
+            <h2>MCP Server Setup</h2>
+            <p class="section-description">Connect this API to your AI assistant using Model Context Protocol (MCP)</p>
+            
+            <div class="mcp-tabs">
+                <button class="mcp-tab active" data-tab="claude">Claude Desktop</button>
+                <button class="mcp-tab" data-tab="cursor">Cursor</button>
+                <button class="mcp-tab" data-tab="vscode">VS Code</button>
+                <button class="mcp-tab" data-tab="codex">Codex</button>
+                <button class="mcp-tab" data-tab="gemini">Gemini</button>
+                <button class="mcp-tab" data-tab="copilot">GitHub Copilot</button>
+            </div>
+
+            <div class="mcp-content">
+                <!-- Claude Desktop -->
+                <div class="mcp-panel active" id="claude-panel">
+                    <h3>Claude Desktop Setup</h3>
+                    <p>Add this configuration to your Claude Desktop config file:</p>
+                    <div class="code-block">
+                        <pre><code id="claude-config">{
+  "mcpServers": {
+    "cloudflare-waas": {
+      "url": "<span class="url-placeholder">https://core-cloudflare-manager-api.hacolby.workers.dev/mcp</span>",
+      "headers": {
+        "Authorization": "Bearer <span class="token-placeholder">YOUR_CLIENT_AUTH_TOKEN</span>"
+      }
+    }
+  }
+}</code></pre>
+                        <button class="copy-btn" data-copy="claude-config">Copy</button>
+                    </div>
+                    <p class="config-path"><strong>Config file location:</strong></p>
+                    <ul>
+                        <li><strong>macOS:</strong> <code>~/Library/Application Support/Claude/config.json</code></li>
+                        <li><strong>Windows:</strong> <code>%APPDATA%\Claude\config.json</code></li>
+                        <li><strong>Linux:</strong> <code>~/.config/claude/config.json</code></li>
+                    </ul>
+                </div>
+
+                <!-- Cursor -->
+                <div class="mcp-panel" id="cursor-panel">
+                    <h3>Cursor Setup</h3>
+                    <p>Add this to your Cursor settings (Settings → MCP):</p>
+                    <div class="code-block">
+                        <pre><code id="cursor-config">{
+  "mcp.servers": {
+    "cloudflare-waas": {
+      "url": "<span class="url-placeholder">https://core-cloudflare-manager-api.hacolby.workers.dev/mcp</span>",
+      "apiKey": "<span class="token-placeholder">YOUR_CLIENT_AUTH_TOKEN</span>"
+    }
+  }
+}</code></pre>
+                        <button class="copy-btn" data-copy="cursor-config">Copy</button>
+                    </div>
+                </div>
+
+                <!-- VS Code -->
+                <div class="mcp-panel" id="vscode-panel">
+                    <h3>VS Code Setup</h3>
+                    <p>Install the MCP extension and add this to your <code>.vscode/settings.json</code>:</p>
+                    <div class="code-block">
+                        <pre><code id="vscode-config">{
+  "mcp.servers": {
+    "cloudflare-waas": {
+      "url": "<span class="url-placeholder">https://core-cloudflare-manager-api.hacolby.workers.dev/mcp</span>",
+      "headers": {
+        "Authorization": "Bearer <span class="token-placeholder">YOUR_CLIENT_AUTH_TOKEN</span>"
+      }
+    }
+  }
+}</code></pre>
+                        <button class="copy-btn" data-copy="vscode-config">Copy</button>
+                    </div>
+                </div>
+
+                <!-- Codex -->
+                <div class="mcp-panel" id="codex-panel">
+                    <h3>Codex CLI Setup</h3>
+                    <p>Add this to your Codex configuration file:</p>
+                    <div class="code-block">
+                        <pre><code id="codex-config">{
+  "mcp_servers": {
+    "cloudflare-waas": {
+      "url": "<span class="url-placeholder">https://core-cloudflare-manager-api.hacolby.workers.dev/mcp</span>",
+      "auth": {
+        "type": "bearer",
+        "token": "<span class="token-placeholder">YOUR_CLIENT_AUTH_TOKEN</span>"
+      }
+    }
+  }
+}</code></pre>
+                        <button class="copy-btn" data-copy="codex-config">Copy</button>
+                    </div>
+                </div>
+
+                <!-- Gemini -->
+                <div class="mcp-panel" id="gemini-panel">
+                    <h3>Google Gemini Setup</h3>
+                    <p>Add this to your Gemini MCP configuration:</p>
+                    <div class="code-block">
+                        <pre><code id="gemini-config">{
+  "mcp_servers": {
+    "cloudflare-waas": {
+      "url": "<span class="url-placeholder">https://core-cloudflare-manager-api.hacolby.workers.dev/mcp</span>",
+      "headers": {
+        "Authorization": "Bearer <span class="token-placeholder">YOUR_CLIENT_AUTH_TOKEN</span>"
+      }
+    }
+  }
+}</code></pre>
+                        <button class="copy-btn" data-copy="gemini-config">Copy</button>
+                    </div>
+                </div>
+
+                <!-- GitHub Copilot -->
+                <div class="mcp-panel" id="copilot-panel">
+                    <h3>GitHub Copilot Setup</h3>
+                    <p>Add this to your repository's <code>.github/copilot-mcp.json</code>:</p>
+                    <div class="code-block">
+                        <pre><code id="copilot-config">{
+  "servers": [{
+    "name": "cloudflare-waas",
+    "url": "<span class="url-placeholder">https://core-cloudflare-manager-api.hacolby.workers.dev/mcp</span>",
+    "auth": {
+      "type": "bearer",
+      "token": "<span class="token-placeholder">YOUR_CLIENT_AUTH_TOKEN</span>"
+    }
+  }]
+}</code></pre>
+                        <button class="copy-btn" data-copy="copilot-config">Copy</button>
+                    </div>
+                </div>
             </div>
         </div>
 

@@ -166,7 +166,7 @@ deployFlows.post('/from-canvas', async (c) => {
         for (const [path, content] of Object.entries(assets)) {
           if (typeof content === 'string') {
             const encoder = new TextEncoder();
-            assetFiles.set(path, encoder.encode(content).buffer);
+            assetFiles.set(path, encoder.encode(content).buffer as ArrayBuffer);
           }
         }
 
@@ -514,7 +514,7 @@ deployFlows.post('/rollback/:scriptName', async (c) => {
     // Get deployment history
     let deployments: any[];
     try {
-      deployments = await cf.workers.deployments.list({
+      deployments = await (cf.workers.scripts.deployments as any).list({
         account_id: accountId,
         script_name: scriptName,
       } as any);
@@ -662,9 +662,10 @@ deployFlows.get('/status/:scriptName', async (c) => {
 
     // Get worker details
     try {
-      const worker = await cf.workers.scripts.get(scriptName, {
+      const workerResponse = await cf.workers.scripts.get(scriptName, {
         account_id: accountId,
       });
+      const worker: any = await workerResponse.json();
       status.worker = {
         id: worker.id,
         created_on: worker.created_on,
@@ -681,7 +682,7 @@ deployFlows.get('/status/:scriptName', async (c) => {
 
     // Get deployment history
     try {
-      const deployments = await cf.workers.deployments.list({
+      const deployments = await (cf.workers.scripts.deployments as any).list({
         account_id: accountId,
         script_name: scriptName,
       } as any);
@@ -697,9 +698,10 @@ deployFlows.get('/status/:scriptName', async (c) => {
 
     // Get subdomain info
     try {
-      const subdomain = await cf.workers.scripts.getSubdomain({
+      const subdomainResponse = await cf.workers.subdomains.get({
         account_id: accountId,
-      } as any);
+      });
+      const subdomain = (subdomainResponse as any).subdomain;
       status.url = `https://${scriptName}.${subdomain}.workers.dev`;
     } catch (error) {
       console.error('Failed to get subdomain:', error);

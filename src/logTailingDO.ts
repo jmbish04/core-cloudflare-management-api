@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import { Env } from './types';
 
 /**
  * LogTailingDO - Durable Object for managing WebSocket connections
@@ -10,7 +11,9 @@ export class LogTailingDO extends DurableObject {
   private maxBufferSize = 1000;
 
   constructor(state: DurableObjectState, env: Env) {
-    super(state, env);
+    // Cast env to any to satisfy DurableObject base class typing;
+    // our Env interface reflects configured bindings.
+    super(state, env as unknown as any);
   }
 
   async fetch(request: Request): Promise<Response> {

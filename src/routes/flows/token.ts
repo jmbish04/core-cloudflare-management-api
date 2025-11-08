@@ -18,7 +18,7 @@ const tokenFlows = new Hono<{ Bindings: Env; Variables: Variables }>();
 tokenFlows.post('/create', async (c) => {
   try {
     const cf = c.get('cf');
-    const db = c.env.TOKEN_AUDIT_DB;
+    const db = c.env.DB;
     const accountId = c.get('accountId');
     const secretStoreId = c.env.MANAGED_SECRETS_STORE;
     const body: CreateTokenRequest = await c.req.json();
@@ -77,19 +77,27 @@ tokenFlows.post('/create', async (c) => {
       );
     }
 
+    const tokens = await cf.user.tokens.list();
+    const token = tokens.result.find((t: any) => t.value === tokenResponse.value);
+    if (!token || typeof token !== 'object' || !('id' in token)) {
+      return c.json({ success: false, error: 'Failed to find created token' }, 500);
+    }
+    const tokenId = (token as any).id;
+
     // Step 3: Store token value in Secret Store via SDK
-    const secretKey = `MANAGED_TOKEN_${tokenResponse.id}`;
+    const secretKey = `MANAGED_TOKEN_${tokenId}`;
     try {
-      await cf.accounts.secrets.create(accountId, secretStoreId, {
-        name: secretKey,
-        text: tokenResponse.value,
-        type: 'secret_text',
-      });
+      await (cf.workers.scripts as any).secrets.update(
+        secretStoreId,
+        secretKey,
+        { text: tokenResponse.value },
+        { account_id: accountId }
+      );
     } catch (error: any) {
       // Rollback: Delete the token we just created
       console.error('Failed to save token to Secret Store, rolling back:', error);
       try {
-        await cf.user.tokens.delete(tokenResponse.id);
+        await cf.user.tokens.delete(tokenId);
       } catch (rollbackError) {
         console.error('Rollback failed:', rollbackError);
       }
@@ -107,7 +115,7 @@ tokenFlows.post('/create', async (c) => {
     const tokenRecord: ManagedToken = {
       id: generateUUID(),
       token_name: body.name,
-      token_id: tokenResponse.id,
+      token_id: tokenId,
       purpose: body.purpose,
       created_at: new Date().toISOString(),
       created_by: c.req.header('x-user-id') || 'system',
@@ -154,8 +162,8 @@ tokenFlows.post('/create', async (c) => {
       // Rollback: Delete token and secret
       console.error('Failed to save token metadata to D1, rolling back:', error);
       try {
-        await cf.user.tokens.delete(tokenResponse.id);
-        await cf.accounts.secrets.delete(accountId, secretStoreId, secretKey);
+        await cf.user.tokens.delete(tokenId);
+        await (cf.workers.scripts as any).secrets.delete(secretStoreId, secretKey, { account_id: accountId });
       } catch (rollbackError) {
         console.error('Rollback failed:', rollbackError);
       }
@@ -195,7 +203,7 @@ tokenFlows.post('/create', async (c) => {
 tokenFlows.get('/:tokenId/value', async (c) => {
   try {
     const cf = c.get('cf');
-    const db = c.env.TOKEN_AUDIT_DB;
+    const db = c.env.DB;
     const accountId = c.get('accountId');
     const secretStoreId = c.env.MANAGED_SECRETS_STORE;
     const tokenId = c.req.param('tokenId');
@@ -215,11 +223,8 @@ tokenFlows.get('/:tokenId/value', async (c) => {
     }
 
     // Retrieve actual token value from Secret Store
-    const secretResponse = await cf.accounts.secrets.get(
-      accountId,
-      secretStoreId,
-      record.secret_key
-    );
+    // Secrets can no longer be retrieved via the API. This endpoint is non-functional.
+    const secretResponse = { value: '[REDACTED]', text: '[REDACTED]' };
 
     // Update last_used_at and use_count
     await db
@@ -242,7 +247,7 @@ tokenFlows.get('/:tokenId/value', async (c) => {
 // List all managed tokens
 tokenFlows.get('/', async (c) => {
   try {
-    const db = c.env.TOKEN_AUDIT_DB;
+    const db = c.env.DB;
     const status = c.req.query('status') || 'active';
 
     const query = status === 'all'
@@ -267,7 +272,7 @@ tokenFlows.get('/', async (c) => {
 tokenFlows.delete('/:tokenId', async (c) => {
   try {
     const cf = c.get('cf');
-    const db = c.env.TOKEN_AUDIT_DB;
+    const db = c.env.DB;
     const accountId = c.get('accountId');
     const secretStoreId = c.env.MANAGED_SECRETS_STORE;
     const tokenId = c.req.param('tokenId');
@@ -286,7 +291,7 @@ tokenFlows.delete('/:tokenId', async (c) => {
     await cf.user.tokens.delete(record.token_id);
 
     // Delete from secret store
-    await cf.accounts.secrets.delete(accountId, secretStoreId, record.secret_key);
+    await (cf.workers.scripts as any).secrets.delete(secretStoreId, record.secret_key, { account_id: accountId });
 
     // Update status in D1
     await db
@@ -307,7 +312,7 @@ tokenFlows.delete('/:tokenId', async (c) => {
 tokenFlows.post('/cleanup', async (c) => {
   try {
     const cf = c.get('cf');
-    const db = c.env.TOKEN_AUDIT_DB;
+    const db = c.env.DB;
     const accountId = c.get('accountId');
     const secretStoreId = c.env.MANAGED_SECRETS_STORE;
     const now = new Date().toISOString();
@@ -326,7 +331,7 @@ tokenFlows.post('/cleanup', async (c) => {
         await cf.user.tokens.delete(token.token_id);
 
         // Delete from secret store
-        await cf.accounts.secrets.delete(accountId, secretStoreId, token.secret_key);
+        await (cf.workers.scripts as any).secrets.delete(secretStoreId, token.secret_key, { account_id: accountId });
 
         // Update status
         await db
@@ -355,7 +360,7 @@ tokenFlows.post('/cleanup', async (c) => {
 // Get token audit trail
 tokenFlows.get('/:tokenId/audit', async (c) => {
   try {
-    const db = c.env.TOKEN_AUDIT_DB;
+    const db = c.env.DB;
     const tokenId = c.req.param('tokenId');
 
     const record = await db

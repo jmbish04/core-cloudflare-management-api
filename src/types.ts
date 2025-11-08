@@ -1,4 +1,5 @@
 import Cloudflare from 'cloudflare';
+import { CloudflareApiClient } from './routes/api/apiClient';
 
 // Environment bindings
 export interface Env {
@@ -9,12 +10,21 @@ export interface Env {
   MANAGED_SECRETS_STORE: string; // Secret Store ID for managed token storage
 
   // Bindings
-  TOKEN_AUDIT_DB: D1Database; // D1 for token inventory/audit
+  DB: D1Database; // D1 for token inventory/audit
   LOG_TAILING_DO: DurableObjectNamespace; // Durable Object for WebSocket log tailing
   ASSETS: Fetcher; // Static assets binding for frontend
+  KV: KVNamespace; // KV for storing coach threshold and other config
 
   // Optional
+  BASE_URL?: string;
   OBSERVABILITY_AE?: AnalyticsEngineDataset;
+  WORKER_URL?: string;
+  
+  // Context Coach Durable Object
+  CONTEXT_COACH: DurableObjectNamespace; // Durable Object for context coaching
+  
+  // Workers AI binding (optional)
+  AI?: Ai;
 }
 
 // Context variables
@@ -23,6 +33,7 @@ export interface Variables {
   accountId: string;
   startTime: number;
   requestId: string;
+  apiClient?: CloudflareApiClient;
 }
 
 // Managed Token Record
@@ -44,6 +55,10 @@ export interface ManagedToken {
   metadata?: string; // JSON
 }
 
+import { PolicyParam } from 'cloudflare/resources/user/tokens/tokens';
+
+// ... (rest of the file)
+
 // Token creation request
 export interface CreateTokenRequest {
   name: string;
@@ -54,14 +69,7 @@ export interface CreateTokenRequest {
   }>;
   ttl_days?: number;
   related_resources?: Record<string, string>;
-  policies: Array<{
-    effect: 'allow' | 'deny';
-    resources: Record<string, string>;
-    permission_groups: Array<{
-      id: string;
-      name?: string;
-    }>;
-  }>;
+  policies: PolicyParam[];
   not_before?: string;
   expires_on?: string;
   condition?: any;

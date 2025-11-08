@@ -30,8 +30,9 @@ diff api-schemas-main/openapi.json api-schemas-backups/api-schemas-2024-11-07_20
 ## Cleanup
 
 To remove old backups (optional):
-```bash
-# Remove backups older than 30 days
-find api-schemas-backups -type d -name "api-schemas-*" -mtime +30 -exec rm -rf {} \;
-```
+# First, perform a dry run to see which backups will be deleted:
+find api-schemas-backups -type d -name "api-schemas-*" -mtime +30
+
+# If the list is correct, run the following command to delete them:
+find api-schemas-backups -type d -name "api-schemas-*" -mtime +30 -exec rm -rf {} +
 

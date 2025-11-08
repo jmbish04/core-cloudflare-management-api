@@ -12,9 +12,7 @@ cd "$(dirname "$0")/.."
 # Get current commit hash before update
 CURRENT_COMMIT=""
 if [ -d "api-schemas-main/.git" ]; then
-  cd api-schemas-main
-  CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
-  cd ..
+  CURRENT_COMMIT=$(git -C api-schemas-main rev-parse HEAD 2>/dev/null || echo "")
 fi
 
 # Create backups directory if it doesn't exist

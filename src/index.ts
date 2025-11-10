@@ -10,6 +10,7 @@ import { CloudflareApiClient } from './routes/api/apiClient';
 
 // Import services
 import { HealthCheckService } from './services/health-check';
+import { UnitTestService } from './services/unit-tests';
 import { autoTuneThreshold } from './services/coachTelemetry';
 
 // Export Durable Objects
@@ -129,6 +130,34 @@ app.get('/', async (c) => {
     return response;
   } catch (error) {
     return c.html('<h1>Cloudflare WaaS</h1><p>Welcome to Worker Management API</p>');
+  }
+});
+
+app.get('/health.html', async (c) => {
+  try {
+    const url = new URL(c.req.url);
+    const requestInit: RequestInit = {
+      method: c.req.method,
+      headers: Object.fromEntries(c.req.raw.headers.entries()),
+    };
+    const response = await c.env.ASSETS.fetch(new Request(`${url.origin}/health.html`, requestInit));
+    return response;
+  } catch (error) {
+    return c.html('<h1>Health Dashboard</h1><p>Health dashboard not found</p>');
+  }
+});
+
+app.get('/nav.html', async (c) => {
+  try {
+    const url = new URL(c.req.url);
+    const requestInit: RequestInit = {
+      method: c.req.method,
+      headers: Object.fromEntries(c.req.raw.headers.entries()),
+    };
+    const response = await c.env.ASSETS.fetch(new Request(`${url.origin}/nav.html`, requestInit));
+    return response;
+  } catch (error) {
+    return c.text('<!-- Navigation not found -->', 404);
   }
 });
 
@@ -304,11 +333,14 @@ app.post('/agent', async (c) => {
 
 I can use the cloudflare-docs to determine the exact permissions needed. Please provide more details about the token's purpose.`;
     } else if (promptLower.includes('list') && promptLower.includes('worker')) {
-      const workers = await cf.workers.scripts.list({ account_id: accountId });
-      console.log(JSON.stringify(workers));
-      actions.push({ type: 'list_workers', result: workers });
-      const workerCount = Array.isArray(workers.result) ? workers.result.length : 0;
-      response = `Found ${workerCount} workers in your account.`;
+      const workerPage = (await cf.workers.scripts.list({ account_id: accountId })) as any;
+      const workerItems = Array.isArray(workerPage.result)
+        ? workerPage.result
+        : Array.isArray(workerPage.items)
+        ? workerPage.items
+        : [];
+      actions.push({ type: 'list_workers', result: workerPage });
+      response = `Found ${workerItems.length} workers in your account.`;
     } else {
       response = `I can help you manage your Cloudflare infrastructure. I can:
 
@@ -393,6 +425,32 @@ export const scheduled = async (
         }
       }
       console.log(`TTL cleanup completed. Processed ${expiredTokens.results?.length || 0} expired tokens.`);
+
+      const unitTestService = new UnitTestService(env);
+      const baseUrl = env.BASE_URL || 'https://scheduled.core-worker.internal';
+      const internalFetch = (request: Request) => {
+        const url = new URL(request.url, baseUrl);
+        const absoluteRequest = new Request(url.toString(), request);
+        return Promise.resolve(app.fetch(absoluteRequest, env, ctx));
+      };
+
+      ctx.waitUntil(
+        unitTestService
+          .runUnitTests('cron:0 */6 * * *', {
+            env,
+            baseUrl,
+            authToken: env.CLIENT_AUTH_TOKEN,
+            internalFetch,
+          })
+          .then((summary) => {
+            console.log(
+              `Unit tests session ${summary.sessionUuid} finished: ${summary.passedTests}/${summary.totalTests} passed in ${summary.durationMs} ms`
+            );
+          })
+          .catch((err) => {
+            console.error('Scheduled unit tests failed:', err);
+          })
+      );
     }
 
     // Task 2: Run daily health check

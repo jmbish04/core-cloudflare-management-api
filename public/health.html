@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Service Health & Reliability Dashboard</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@heroui/vanilla@0.3.2/dist/style.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    />
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+          sans-serif;
+        background: #0b1120;
+        color: #e2e8f0;
+        min-height: 100vh;
+        margin: 0;
+      }
+
+      .hero {
+        background: radial-gradient(circle at top, #1d4ed8, #0b1120 65%);
+        padding: 4rem 1.5rem 2rem;
+      }
+
+      .hero-content {
+        max-width: 960px;
+        margin: 0 auto;
+        text-align: center;
+      }
+
+      .hero h1 {
+        font-size: clamp(2.5rem, 5vw, 4rem);
+        margin-bottom: 0.5rem;
+        font-weight: 700;
+      }
+
+      .hero p {
+        color: #cbd5f5;
+        max-width: 720px;
+        margin: 0.75rem auto 0;
+        line-height: 1.6;
+      }
+
+      .content {
+        max-width: 1100px;
+        margin: -3rem auto 4rem;
+        padding: 0 1.5rem;
+      }
+
+      .card {
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.1);
+        border-radius: 20px;
+        backdrop-filter: blur(14px);
+        box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.45);
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1rem;
+        margin-top: 2rem;
+      }
+
+      .summary-card {
+        padding: 1.25rem;
+        border-radius: 18px;
+        border: 1px solid rgba(148, 163, 184, 0.08);
+        background: rgba(30, 41, 59, 0.75);
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+
+      .summary-card .title {
+        font-size: 0.85rem;
+        color: #94a3b8;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .summary-card .value {
+        font-size: 2rem;
+        font-weight: 600;
+      }
+
+      .actions {
+        margin-top: 2.5rem;
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+      }
+
+      .tests-container {
+        margin-top: 2.5rem;
+        padding: 2rem 2.5rem;
+      }
+
+      .tests-header {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .tests-header h2 {
+        margin: 0;
+        font-size: 1.4rem;
+        font-weight: 600;
+      }
+
+      .tests-subtitle {
+        color: #94a3b8;
+        font-size: 0.95rem;
+      }
+
+      .tests-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 1.25rem;
+      }
+
+      .test-card {
+        padding: 1.25rem;
+        border-radius: 16px;
+        border: 1px solid rgba(148, 163, 184, 0.08);
+        background: rgba(15, 23, 42, 0.75);
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .test-card::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: 16px;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        border: 1px solid transparent;
+        pointer-events: none;
+      }
+
+      .test-card[data-status='pass']::after {
+        border-color: rgba(34, 197, 94, 0.4);
+        box-shadow: 0 0 30px rgba(34, 197, 94, 0.25);
+      }
+
+      .test-card[data-status='fail']::after {
+        border-color: rgba(239, 68, 68, 0.4);
+        box-shadow: 0 0 30px rgba(239, 68, 68, 0.25);
+      }
+
+      .test-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      .test-name {
+        font-weight: 600;
+      }
+
+      .test-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        font-size: 0.85rem;
+        color: #94a3b8;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        border-radius: 999px;
+        padding: 0.35rem 0.85rem;
+        font-size: 0.8rem;
+        font-weight: 500;
+        letter-spacing: 0.03em;
+      }
+
+      .badge-status-pass {
+        background: rgba(34, 197, 94, 0.12);
+        color: #4ade80;
+      }
+
+      .badge-status-fail {
+        background: rgba(239, 68, 68, 0.12);
+        color: #f87171;
+      }
+
+      .badge-status-running {
+        background: rgba(59, 130, 246, 0.12);
+        color: #60a5fa;
+      }
+
+      .ai-summary {
+        font-size: 0.85rem;
+        color: #cbd5f5;
+        background: rgba(79, 70, 229, 0.12);
+        border: 1px solid rgba(99, 102, 241, 0.2);
+        border-radius: 12px;
+        padding: 0.75rem;
+      }
+
+      .test-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.75rem;
+        color: #64748b;
+      }
+
+      .spinner {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        border: 2px solid rgba(148, 163, 184, 0.3);
+        border-top-color: #60a5fa;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      button.run-tests {
+        all: unset;
+        cursor: pointer;
+        padding: 0.9rem 1.8rem;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #2563eb, #9333ea);
+        color: white;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        box-shadow: 0 15px 40px rgba(79, 70, 229, 0.35);
+        transition: transform 0.25s ease, box-shadow 0.25s ease;
+      }
+
+      button.run-tests:disabled {
+        cursor: progress;
+        opacity: 0.75;
+        box-shadow: none;
+      }
+
+      button.run-tests:not(:disabled):hover {
+        transform: translateY(-2px);
+        box-shadow: 0 25px 45px rgba(79, 70, 229, 0.42);
+      }
+
+      .toast-container {
+        position: fixed;
+        bottom: 1.5rem;
+        right: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        z-index: 1000;
+      }
+
+      .toast {
+        background: rgba(30, 41, 59, 0.92);
+        border: 1px solid rgba(248, 113, 113, 0.35);
+        border-radius: 14px;
+        padding: 1rem 1.25rem;
+        min-width: 260px;
+        box-shadow: 0 18px 30px rgba(15, 23, 42, 0.45);
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      .toast strong {
+        display: block;
+        margin-bottom: 0.35rem;
+      }
+
+      .toast button {
+        background: none;
+        border: none;
+        color: #e2e8f0;
+        font-size: 1.1rem;
+        cursor: pointer;
+        align-self: flex-start;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="hero">
+      <div class="hero-content">
+        <p class="badge badge-status-running" id="globalStatusBadge">
+          <span class="spinner" style="width: 14px; height: 14px"></span>
+          Initializing
+        </p>
+        <h1>Reliability Control Room</h1>
+        <p>
+          Continuous validation of internal services, Cloudflare API proxies,
+          and bound resources. Launch an on-demand validation run or monitor the
+          most recent automated session.
+        </p>
+        <div class="actions">
+          <button id="runUnitTestsButton" class="run-tests">
+            Run Unit Test Suite
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <main class="content">
+      <section class="card tests-container" id="sessionContainer">
+        <div class="tests-header">
+          <div>
+            <h2>Latest Test Session</h2>
+            <p class="tests-subtitle">
+              Session ID:
+              <span id="sessionUuid">–</span>
+              · Triggered by
+              <span id="sessionTrigger">–</span>
+            </p>
+          </div>
+          <div class="summary-grid">
+            <div class="summary-card">
+              <span class="title">Last Run</span>
+              <span class="value" id="lastRunTimestamp">—</span>
+              <span class="title" id="runDuration">—</span>
+            </div>
+            <div class="summary-card">
+              <span class="title">Pass</span>
+              <span class="value" id="passCount">0</span>
+            </div>
+            <div class="summary-card">
+              <span class="title">Fail</span>
+              <span class="value" id="failCount">0</span>
+            </div>
+            <div class="summary-card">
+              <span class="title">Total Tests</span>
+              <span class="value" id="totalCount">0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tests-grid" id="testsList"></div>
+      </section>
+    </main>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

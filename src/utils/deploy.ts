@@ -99,8 +99,11 @@ export function buildWorkerBindings(
     kv?: Array<{ binding: string; id: string }>;
     d1?: Array<{ binding: string; database_id: string }>;
     r2?: Array<{ binding: string; bucket_name: string }>;
+    vectorize?: Array<{ binding: string; index_name: string }>;
     durable_objects?: Array<{ name: string; class_name: string }>;
     services?: Array<{ binding: string; service: string }>;
+    analytics_engine?: Array<{ binding: string }>;
+    queues?: Array<{ binding: string; queue_name: string }>;
   },
   hasAssets: boolean = false,
   assetBinding: string = 'ASSETS',
@@ -151,6 +154,35 @@ export function buildWorkerBindings(
         type: 'r2_bucket',
         bucket_name: r2.bucket_name,
       });
+    }
+  }
+
+  if (bindings.vectorize) {
+    for (const vec of bindings.vectorize) {
+      workerBindings.push({
+        name: vec.binding,
+        type: 'vectorize',
+        index_name: vec.index_name,
+      } as any); // Vectorize binding type
+    }
+  }
+
+  if (bindings.analytics_engine) {
+    for (const ae of bindings.analytics_engine) {
+      workerBindings.push({
+        name: ae.binding,
+        type: 'analytics_engine',
+      } as any);
+    }
+  }
+
+  if (bindings.queues) {
+    for (const queue of bindings.queues) {
+      workerBindings.push({
+        name: queue.binding,
+        type: 'queue',
+        queue_name: queue.queue_name,
+      } as any);
     }
   }
 

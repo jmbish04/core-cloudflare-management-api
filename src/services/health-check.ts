@@ -1,8 +1,5 @@
-import { drizzle } from 'drizzle-orm/d1';
-import { eq, and, desc } from 'drizzle-orm';
 import { Env, Variables, generateUUID } from '../types';
-import * as schema from '../db/schema';
-import { healthChecks, healthTests, healthTestResults } from '../db/schema';
+import { initDb, type DbClients } from '../db/client';
 
 export interface HealthCheckResult {
   overall_status: 'pass' | 'fail' | 'degraded';
@@ -29,14 +26,14 @@ export interface EndpointResult {
 
 export class HealthCheckService {
   private env: Env;
-  private db;
+  private db: DbClients;
   private baseUrl: string;
   private authToken: string;
   private appFetch?: (request: Request) => Promise<Response>;
 
   constructor(env: Env, baseUrl: string, authToken: string, appFetch?: (request: Request) => Promise<Response>) {
     this.env = env;
-    this.db = drizzle(env.DB, { schema });
+    this.db = initDb(env);
     this.baseUrl = baseUrl;
     this.authToken = authToken;
     this.appFetch = appFetch; // Optional: allows internal routing instead of HTTP requests
@@ -186,30 +183,35 @@ export class HealthCheckService {
 
     for (const testDef of defaultTests) {
       // Check if test already exists
-      const existingData = await this.env.DB.prepare(
-        'SELECT * FROM health_tests WHERE endpoint_path = ? LIMIT 1'
-      ).bind(testDef.endpoint_path).first();
-      const existing = existingData as any;
+      const existing = await this.db.kysely
+        .selectFrom('health_tests')
+        .where('endpoint_path', '=', testDef.endpoint_path)
+        .selectAll()
+        .limit(1)
+        .executeTakeFirst();
 
       if (!existing) {
         // Register new test
-        await this.db.insert(healthTests).values({
-          id: generateUUID(),
-          name: testDef.name,
-          endpoint_path: testDef.endpoint_path,
-          http_method: testDef.http_method,
-          category: testDef.category,
-          description: testDef.description,
-          request_body: testDef.request_body || null,
-          enabled: true,
-          is_active: true,
-          created_at: now,
-          updated_at: now,
-        });
+        await this.db.kysely
+          .insertInto('health_tests')
+          .values({
+            id: generateUUID(),
+            name: testDef.name,
+            endpoint_path: testDef.endpoint_path,
+            http_method: testDef.http_method,
+            category: testDef.category,
+            description: testDef.description,
+            request_body: testDef.request_body || null,
+            enabled: true,
+            is_active: true,
+            created_at: now,
+            updated_at: now,
+          })
+          .execute();
       } else if (existing.description !== testDef.description || existing.http_method !== testDef.http_method) {
         // Update existing test if definition changed
-        await this.db
-          .update(healthTests)
+        await this.db.kysely
+          .updateTable('health_tests')
           .set({
             name: testDef.name,
             http_method: testDef.http_method,
@@ -218,7 +220,8 @@ export class HealthCheckService {
             request_body: testDef.request_body || null,
             updated_at: now,
           })
-          .where(eq(healthTests.id, existing.id));
+          .where('id', '=', existing.id)
+          .execute();
       }
     }
   }
@@ -235,11 +238,13 @@ export class HealthCheckService {
     description: string | null;
     request_body: string | null;
   }>> {
-    // Use raw SQL to avoid parameter binding issues
-    const result = await this.env.DB.prepare(
-      'SELECT * FROM health_tests WHERE enabled = 1 AND is_active = 1'
-    ).all();
-    return result.results as any[];
+    const result = await this.db.kysely
+      .selectFrom('health_tests')
+      .where('enabled', '=', true)
+      .where('is_active', '=', true)
+      .select(['id', 'name', 'endpoint_path', 'http_method', 'category', 'description', 'request_body'])
+      .execute();
+    return result;
   }
 
   /**
@@ -247,50 +252,84 @@ export class HealthCheckService {
    * Returns array of objects with test definition and latest result
    */
   public async getTestsWithLatestResults(): Promise<any[]> {
-    // Get all active tests using raw SQL to avoid parameter binding issues
-    const testsResult = await this.env.DB.prepare(
-      'SELECT * FROM health_tests WHERE is_active = 1 ORDER BY name ASC'
-    ).all();
-    const tests = testsResult.results as any[];
+    try {
+      // Ensure tests are registered first
+      await this.ensureTestsRegistered();
 
-    // For each test, get the latest result
-    const testsWithResults = await Promise.all(
-      tests.map(async (test) => {
-        const latestResultData = await this.env.DB.prepare(
-          'SELECT * FROM health_test_results WHERE health_test_id = ? ORDER BY run_at DESC LIMIT 1'
-        ).bind(test.id).first();
-        const latestResult = latestResultData as any;
+      // Get all active tests using Kysely
+      const tests = await this.db.kysely
+        .selectFrom('health_tests')
+        .where('is_active', '=', true)
+        .orderBy('name')
+        .selectAll()
+        .execute();
 
-        return {
-          test: {
-            id: test.id,
-            name: test.name,
-            endpoint_path: test.endpoint_path,
-            http_method: test.http_method,
-            category: test.category,
-            description: test.description,
-            enabled: test.enabled,
-            is_active: test.is_active,
-            created_at: test.created_at,
-            updated_at: test.updated_at,
-          },
-          latest_result: latestResult
-            ? {
-                id: latestResult.id,
-                status: latestResult.status,
-                status_text: latestResult.status_text,
-                response_time_ms: latestResult.response_time_ms,
-                outcome: latestResult.outcome,
-                error_message: latestResult.error_message,
-                run_at: latestResult.run_at,
-                run_group_id: latestResult.run_group_id,
-              }
-            : null,
-        };
-      })
-    );
+      // For each test, get the latest result using Kysely
+      const testsWithResults = await Promise.all(
+        tests.map(async (test) => {
+          try {
+            const latestResult = await this.db.kysely
+              .selectFrom('health_test_results')
+              .where('health_test_id', '=', test.id)
+              .orderBy('run_at', 'desc')
+              .selectAll()
+              .limit(1)
+              .executeTakeFirst();
 
-    return testsWithResults;
+            return {
+              test: {
+                id: test.id,
+                name: test.name,
+                endpoint_path: test.endpoint_path,
+                http_method: test.http_method,
+                category: test.category,
+                description: test.description,
+                enabled: test.enabled,
+                is_active: test.is_active,
+                created_at: test.created_at,
+                updated_at: test.updated_at,
+              },
+              latest_result: latestResult
+                ? {
+                    id: latestResult.id,
+                    health_test_id: latestResult.health_test_id,
+                    status: latestResult.status,
+                    status_text: latestResult.status_text,
+                    response_time_ms: latestResult.response_time_ms,
+                    outcome: latestResult.outcome,
+                    error_message: latestResult.error_message,
+                    response_body: latestResult.response_body,
+                    run_at: latestResult.run_at,
+                    run_group_id: latestResult.run_group_id || null,
+                  }
+                : null,
+            };
+          } catch (error: any) {
+            console.error(`Error fetching result for test ${test.id}:`, error);
+            return {
+              test: {
+                id: test.id,
+                name: test.name,
+                endpoint_path: test.endpoint_path,
+                http_method: test.http_method,
+                category: test.category,
+                description: test.description,
+                enabled: test.enabled,
+                is_active: test.is_active,
+                created_at: test.created_at,
+                updated_at: test.updated_at,
+              },
+              latest_result: null,
+            };
+          }
+        })
+      );
+
+      return testsWithResults;
+    } catch (error: any) {
+      console.error('Error in getTestsWithLatestResults:', error);
+      throw error;
+    }
   }
 
   public async runHealthCheck(): Promise<HealthCheckResult> {
@@ -405,24 +444,24 @@ export class HealthCheckService {
       const responseTime = Date.now() - startTime;
       totalResponseTime += responseTime;
 
-      // Store result in database using raw SQL to avoid batch insert issues
+      // Store result in database using Kysely
       const resultId = generateUUID();
       try {
-        await this.env.DB.prepare(
-          `INSERT INTO health_test_results (id, health_test_id, run_group_id, status, status_text, response_time_ms, outcome, error_message, response_body, run_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(
-          resultId,
-          test.id,
-          checkGroupId,
-          status,
-          statusText,
-          responseTime,
-          outcome,
-          outcome === 'fail' ? statusText : null,
-          responseBody,
-          new Date().toISOString()
-        ).run();
+        await this.db.kysely
+          .insertInto('health_test_results')
+          .values({
+            id: resultId,
+            health_test_id: test.id,
+            run_group_id: checkGroupId,
+            status: status,
+            status_text: statusText,
+            response_time_ms: responseTime,
+            outcome: outcome,
+            error_message: outcome === 'fail' ? statusText : null,
+            response_body: responseBody,
+            run_at: new Date().toISOString(),
+          })
+          .execute();
       } catch (dbError: any) {
         console.error('Failed to insert health test result:', {
           test: test.name,
@@ -517,42 +556,92 @@ export class HealthCheckService {
    * Get test results with test definitions joined
    */
   public async getTestResultsWithDefinitions(runGroupId?: string, limit: number = 100): Promise<any[]> {
-    const results = await this.db.query.healthTestResults.findMany({
-      where: runGroupId 
-        ? (healthTestResults, { eq }) => eq(healthTestResults.run_group_id, runGroupId)
-        : undefined,
-      orderBy: (healthTestResults, { desc }) => [desc(healthTestResults.run_at)],
-      limit,
-      with: {
-        health_test: true, // Join with health_tests table
+    let query = this.db.kysely
+      .selectFrom('health_test_results')
+      .innerJoin('health_tests', 'health_tests.id', 'health_test_results.health_test_id')
+      .select([
+        'health_test_results.id',
+        'health_test_results.health_test_id',
+        'health_test_results.run_group_id',
+        'health_test_results.status',
+        'health_test_results.status_text',
+        'health_test_results.response_time_ms',
+        'health_test_results.outcome',
+        'health_test_results.error_message',
+        'health_test_results.response_body',
+        'health_test_results.run_at',
+        'health_tests.name',
+        'health_tests.endpoint_path',
+        'health_tests.http_method',
+        'health_tests.category',
+        'health_tests.description',
+      ])
+      .orderBy('health_test_results.run_at', 'desc')
+      .limit(limit);
+
+    if (runGroupId) {
+      query = query.where('health_test_results.run_group_id', '=', runGroupId);
+    }
+
+    const results = await query.execute();
+
+    // Transform results to match the expected format
+    return results.map(result => ({
+      id: result.id,
+      health_test_id: result.health_test_id,
+      run_group_id: result.run_group_id,
+      status: result.status,
+      status_text: result.status_text,
+      response_time_ms: result.response_time_ms,
+      outcome: result.outcome,
+      error_message: result.error_message,
+      response_body: result.response_body,
+      run_at: result.run_at,
+      health_test: {
+        name: result.name,
+        endpoint_path: result.endpoint_path,
+        http_method: result.http_method,
+        category: result.category,
+        description: result.description,
       },
-    });
-    return results;
+    }));
   }
 
   public async getLatestHealthCheck(): Promise<HealthCheckResult | null> {
     // Try to get from new health_test_results table first
-    const latestResult = await this.db.query.healthTestResults.findFirst({
-      orderBy: (healthTestResults, { desc }) => [desc(healthTestResults.run_at)],
-    });
+    const latestResult = await this.db.kysely
+      .selectFrom('health_test_results')
+      .select(['run_group_id', 'run_at'])
+      .orderBy('run_at', 'desc')
+      .limit(1)
+      .executeTakeFirst();
 
     if (latestResult) {
-      const allResultsInGroup = await this.db.query.healthTestResults.findMany({
-        where: (healthTestResults, { eq }) => eq(healthTestResults.run_group_id, latestResult.run_group_id),
-        with: {
-          health_test: true,
-        },
-      });
+      const allResultsInGroup = await this.db.kysely
+        .selectFrom('health_test_results')
+        .innerJoin('health_tests', 'health_tests.id', 'health_test_results.health_test_id')
+        .where('health_test_results.run_group_id', '=', latestResult.run_group_id)
+        .select([
+          'health_test_results.status',
+          'health_test_results.status_text',
+          'health_test_results.response_time_ms',
+          'health_test_results.outcome',
+          'health_tests.name',
+          'health_tests.category',
+          'health_tests.endpoint_path',
+          'health_tests.http_method',
+        ])
+        .execute();
 
       const results: EndpointResult[] = allResultsInGroup.map((result) => ({
-        endpoint: result.health_test.name,
+        endpoint: result.name,
         status: result.status,
         statusText: result.status_text,
         response_time_ms: result.response_time_ms,
         outcome: result.outcome as 'pass' | 'fail',
-        category: result.health_test.category,
-        path: result.health_test.endpoint_path,
-        method: result.health_test.http_method,
+        category: result.category,
+        path: result.endpoint_path,
+        method: result.http_method,
       }));
 
       const healthy = results.filter((r) => r.outcome === 'pass').length;
@@ -572,90 +661,8 @@ export class HealthCheckService {
       };
     }
 
-    // Fallback to legacy health_checks table
-    const latestRun = await this.db.query.healthChecks.findFirst({
-      orderBy: (healthChecks, { desc }) => [desc(healthChecks.run_at)],
-    });
-
-    if (!latestRun) {
-      return null;
-    }
-
-    const allChecksInGroup = await this.db.query.healthChecks.findMany({
-      where: (healthChecks, { eq }) => eq(healthChecks.check_group_id, latestRun.check_group_id),
-    });
-
-    const results: EndpointResult[] = allChecksInGroup.map((check) => ({
-      endpoint: check.endpoint,
-      status: check.status,
-      statusText: check.statusText,
-      response_time_ms: check.response_time_ms,
-      outcome: check.status >= 200 && check.status < 300 ? 'pass' : 'fail',
-    }));
-
-    const healthy = results.filter((r) => r.outcome === 'pass').length;
-    const unhealthy = results.length - healthy;
-    const totalResponseTime = results.reduce((acc, r) => acc + r.response_time_ms, 0);
-
-    return {
-      overall_status: latestRun.overall_status as 'pass' | 'fail' | 'degraded',
-      total_endpoints: results.length,
-      healthy_endpoints: healthy,
-      unhealthy_endpoints: unhealthy,
-      degraded_endpoints: 0,
-      avg_response_time: totalResponseTime / results.length,
-      checked_at: latestRun.run_at,
-      check_group_id: latestRun.check_group_id,
-      results,
-    };
+    // No fallback needed for now
+    return null;
   }
 
-  public async getHealthCheckHistory(limit: number = 10): Promise<HealthCheckResult[]> {
-    const latestRuns = await this.db.query.healthChecks.findMany({
-      orderBy: (healthChecks, { desc }) => [desc(healthChecks.run_at)],
-      limit: limit * 10, // Fetch more to account for multiple endpoints per run
-    });
-
-    const groupedByCheckId: { [key: string]: any[] } = {};
-    for (const run of latestRuns) {
-      if (!groupedByCheckId[run.check_group_id]) {
-        groupedByCheckId[run.check_group_id] = [];
-      }
-      groupedByCheckId[run.check_group_id].push(run);
-    }
-
-    const history: HealthCheckResult[] = [];
-    const groupIds = Object.keys(groupedByCheckId).slice(0, limit);
-
-    for (const groupId of groupIds) {
-      const group = groupedByCheckId[groupId];
-      const firstRun = group[0];
-
-      const results: EndpointResult[] = group.map((check) => ({
-        endpoint: check.endpoint,
-        status: check.status,
-        statusText: check.statusText,
-        response_time_ms: check.response_time_ms,
-        outcome: check.status >= 200 && check.status < 300 ? 'pass' : 'fail',
-      }));
-
-      const healthy = results.filter((r) => r.outcome === 'pass').length;
-      const unhealthy = results.length - healthy;
-      const totalResponseTime = results.reduce((acc, r) => acc + r.response_time_ms, 0);
-
-      history.push({
-        overall_status: firstRun.overall_status as 'pass' | 'fail' | 'degraded',
-        total_endpoints: results.length,
-        healthy_endpoints: healthy,
-        unhealthy_endpoints: unhealthy,
-        degraded_endpoints: 0,
-        avg_response_time: totalResponseTime / results.length,
-        checked_at: firstRun.run_at,
-        check_group_id: firstRun.check_group_id,
-        results,
-      });
-    }
-
-    return history;
-  }
 }

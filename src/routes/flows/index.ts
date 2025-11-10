@@ -7,6 +7,7 @@ import projectFlows from './project';
 import healthFlows from './health';
 import cicdFlows from './cicd';
 import deployFlows from './deploy';
+import githubDeployFlows from './github-deploy';
 
 const flows = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -16,5 +17,6 @@ flows.route('/project', projectFlows);
 flows.route('/health', healthFlows);
 flows.route('/cicd', cicdFlows);
 flows.route('/deploy', deployFlows);
+flows.route('/github-deploy', githubDeployFlows);
 
 export default flows;

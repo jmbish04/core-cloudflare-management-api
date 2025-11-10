@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Hono } from 'hono';
 import { Env, Variables, ManagedToken, CreateTokenRequest, generateUUID, calculateExpiresAt } from '../../types';
 

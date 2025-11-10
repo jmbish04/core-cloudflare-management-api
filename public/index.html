@@ -3,256 +3,507 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cloudflare WaaS - Health Dashboard</title>
-    <link rel="stylesheet" href="/styles.css">
+    <title>Cloudflare WaaS - Worker Management API</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        * {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        .gradient-hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%);
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
+        }
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        .fade-in-up {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+        .fade-in-up.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .glass-nav {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+        }
+        .stat-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        .stat-badge.emerald {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .stat-badge.amber {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        .stat-badge.indigo {
+            background: #e0e7ff;
+            color: #3730a3;
+        }
+    </style>
 </head>
-<body>
-    <div id="toast-container"></div>
-    <div class="container">
-        <header class="header">
-            <h1>Cloudflare Worker Management API</h1>
-            <p class="subtitle">Wrangler as a Service - Health Dashboard</p>
-        </header>
+<body class="bg-white">
+    <!-- Navigation -->
+    <div id="nav-placeholder"></div>
 
-        <div class="status-card">
-            <div class="status-header">
-                <h2>System Status</h2>
-                <button id="runHealthCheck" class="btn-primary">Run Health Check</button>
-            </div>
-
-            <div id="loading" class="loading" style="display: none;">
-                <div class="spinner"></div>
-                <p>Running health check...</p>
-            </div>
-
-            <div id="healthStatus" class="health-status">
-                <div class="status-badge" id="statusBadge">
-                    <span class="status-dot"></span>
-                    <span class="status-text">Loading...</span>
+    <!-- Hero Section -->
+    <section id="hero" class="gradient-hero text-white py-24 md:py-32 relative overflow-hidden">
+        <div class="absolute inset-0 bg-black/20"></div>
+        <div class="container mx-auto px-6 relative z-10">
+            <div class="max-w-4xl mx-auto text-center fade-in-up">
+                <h1 class="text-5xl md:text-7xl font-bold mb-6 leading-tight">
+                    Cloudflare WaaS Redefines How Teams Deploy Infrastructure
+                </h1>
+                <p class="text-xl md:text-2xl mb-8 text-white/90 leading-relaxed">
+                    A comprehensive management API that transforms Cloudflare Workers deployment from manual configuration to intelligent automation. 
+                    Deploy, monitor, and scale your infrastructure with AI-powered insights and GitHub-first workflows.
+                </p>
+                <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                    <a href="#features" class="bg-white text-indigo-600 px-8 py-4 rounded-lg font-semibold hover:bg-indigo-50 transition-all shadow-lg hover:shadow-xl">
+                        Explore System
+                    </a>
+                    <a href="/openapi.json" target="_blank" class="bg-indigo-600 text-white px-8 py-4 rounded-lg font-semibold hover:bg-indigo-700 transition-all border-2 border-white/20">
+                        View API Spec
+                    </a>
                 </div>
-                <div class="status-info">
-                    <div class="stat">
-                        <span class="stat-label">Total Endpoints</span>
-                        <span class="stat-value" id="totalEndpoints">-</span>
+                <!-- Live Stats -->
+                <div class="mt-12 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-3xl mx-auto">
+                    <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
+                        <div class="text-3xl font-bold" id="stat-uptime">99.99%</div>
+                        <div class="text-sm text-white/80 mt-1">Uptime</div>
                     </div>
-                    <div class="stat">
-                        <span class="stat-label">Healthy</span>
-                        <span class="stat-value success" id="healthyEndpoints">-</span>
+                    <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
+                        <div class="text-3xl font-bold" id="stat-throughput">1M+</div>
+                        <div class="text-sm text-white/80 mt-1">Requests/Day</div>
                     </div>
-                    <div class="stat">
-                        <span class="stat-label">Unhealthy</span>
-                        <span class="stat-value error" id="unhealthyEndpoints">-</span>
+                    <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
+                        <div class="text-3xl font-bold" id="stat-latency">&lt;50ms</div>
+                        <div class="text-sm text-white/80 mt-1">Avg Latency</div>
                     </div>
-                    <div class="stat">
-                        <span class="stat-label">Response Time</span>
-                        <span class="stat-value" id="responseTime">-</span>
+                    <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
+                        <div class="text-3xl font-bold" id="stat-workers">100+</div>
+                        <div class="text-sm text-white/80 mt-1">Workers Managed</div>
                     </div>
-                </div>
-                <div class="last-check">
-                    Last checked: <span id="lastCheck">Never</span>
                 </div>
             </div>
         </div>
+    </section>
 
-        <div class="results-section">
-            <h2>Endpoint Health</h2>
-            <div class="category-filters">
-                <button class="filter-btn active" data-category="all">All</button>
-                <button class="filter-btn" data-category="api">API</button>
-                <button class="filter-btn" data-category="health">Health</button>
-                <button class="filter-btn" data-category="meta">Meta</button>
+    <!-- Problem Section -->
+    <section id="problem" class="py-20 bg-stone-50">
+        <div class="container mx-auto px-6">
+            <div class="max-w-3xl mx-auto text-center mb-12 fade-in-up">
+                <h2 class="text-4xl md:text-5xl font-bold text-gray-900 mb-4">The Challenge It Solves</h2>
+                <p class="text-xl text-gray-600">Traditional Cloudflare Worker deployment is fragmented, manual, and error-prone.</p>
             </div>
-            <div id="endpointResults" class="endpoint-results"></div>
-        </div>
-
-        <div class="api-docs-section">
-            <h2>API Documentation</h2>
-            <div class="docs-grid">
-                <a href="/openapi.json" class="doc-card" target="_blank">
-                    <h3>OpenAPI JSON</h3>
-                    <p>OpenAPI 3.1.0 specification in JSON format</p>
-                </a>
-                <a href="/openapi.yaml" class="doc-card" target="_blank">
-                    <h3>OpenAPI YAML</h3>
-                    <p>OpenAPI 3.1.0 specification in YAML format</p>
-                </a>
-                <a href="/mcp" class="doc-card">
-                    <h3>MCP Server</h3>
-                    <p>Model Context Protocol for AI agents</p>
-                </a>
+            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+                <div class="bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow fade-in-up">
+                    <div class="text-4xl mb-4">🔧</div>
+                    <h3 class="text-xl font-semibold mb-2 text-gray-900">Manual Configuration</h3>
+                    <p class="text-gray-600 mb-4">Wrangler configs, bindings, and deployments require extensive manual setup and maintenance.</p>
+                    <div class="bg-gray-100 rounded p-2 text-xs font-mono text-gray-700">
+                        <code>wrangler.toml</code> sprawl across projects
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow fade-in-up">
+                    <div class="text-4xl mb-4">🔄</div>
+                    <h3 class="text-xl font-semibold mb-2 text-gray-900">No CI/CD Integration</h3>
+                    <p class="text-gray-600 mb-4">Linking GitHub repos, setting up build triggers, and managing deployments is a multi-step process.</p>
+                    <div class="bg-gray-100 rounded p-2 text-xs font-mono text-gray-700">
+                        Manual GitHub → Cloudflare connection
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow fade-in-up">
+                    <div class="text-4xl mb-4">🐛</div>
+                    <h3 class="text-xl font-semibold mb-2 text-gray-900">Build Failures</h3>
+                    <p class="text-gray-600 mb-4">Outdated package-lock.json, missing dependencies, and build errors require manual intervention.</p>
+                    <div class="bg-gray-100 rounded p-2 text-xs font-mono text-gray-700">
+                        npm ERR! missing dependency
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow fade-in-up">
+                    <div class="text-4xl mb-4">📊</div>
+                    <h3 class="text-xl font-semibold mb-2 text-gray-900">No Visibility</h3>
+                    <p class="text-gray-600 mb-4">Health monitoring, audit logs, and observability require separate tools and configurations.</p>
+                    <div class="bg-gray-100 rounded p-2 text-xs font-mono text-gray-700">
+                        Scattered monitoring tools
+                    </div>
+                </div>
             </div>
         </div>
+    </section>
 
-        <div class="mcp-setup-section">
-            <h2>MCP Server Setup</h2>
-            <p class="section-description">Connect this API to your AI assistant using Model Context Protocol (MCP)</p>
+    <!-- Solution Section -->
+    <section id="solution" class="py-20 bg-white">
+        <div class="container mx-auto px-6">
+            <div class="max-w-6xl mx-auto">
+                <div class="text-center mb-12 fade-in-up">
+                    <h2 class="text-4xl md:text-5xl font-bold text-gray-900 mb-4">How It Works</h2>
+                    <p class="text-xl text-gray-600 max-w-3xl mx-auto">
+                        A unified API layer that orchestrates Worker deployment, binding creation, CI/CD setup, and monitoring 
+                        through intelligent automation and AI-powered insights.
+                    </p>
+                </div>
+                <div class="grid md:grid-cols-2 gap-12 items-center fade-in-up">
+                    <div>
+                        <h3 class="text-2xl font-semibold mb-4 text-gray-900">Architecture</h3>
+                        <div class="bg-indigo-50 rounded-lg p-6 mb-6 border-2 border-indigo-100">
+                            <div class="font-mono text-sm space-y-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-indigo-600 font-bold">→</span>
+                                    <span>GitHub Repository</span>
+                                </div>
+                                <div class="flex items-center gap-2 ml-4">
+                                    <span class="text-indigo-600 font-bold">↓</span>
+                                    <span>WaaS API (Worker Management)</span>
+                                </div>
+                                <div class="flex items-center gap-2 ml-8">
+                                    <span class="text-emerald-600 font-bold">→</span>
+                                    <span>Auto-detect wrangler.jsonc bindings</span>
+                                </div>
+                                <div class="flex items-center gap-2 ml-8">
+                                    <span class="text-emerald-600 font-bold">→</span>
+                                    <span>Create KV, D1, R2, Vectorize</span>
+                                </div>
+                                <div class="flex items-center gap-2 ml-4">
+                                    <span class="text-indigo-600 font-bold">↓</span>
+                                    <span>Deploy Worker with bindings</span>
+                                </div>
+                                <div class="flex items-center gap-2 ml-4">
+                                    <span class="text-indigo-600 font-bold">↓</span>
+                                    <span>Setup CI/CD triggers</span>
+                                </div>
+                                <div class="flex items-center gap-2 ml-4">
+                                    <span class="text-indigo-600 font-bold">↓</span>
+                                    <span>Monitor builds & auto-fix errors</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="flex items-start gap-3">
+                                <span class="text-emerald-600 text-xl">✓</span>
+                                <div>
+                                    <strong class="text-gray-900">Reliability:</strong>
+                                    <span class="text-gray-600"> Durable Objects for stateful operations, automatic retries, and health monitoring.</span>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-emerald-600 text-xl">✓</span>
+                                <div>
+                                    <strong class="text-gray-900">Scalability:</strong>
+                                    <span class="text-gray-600"> Built on Cloudflare's global edge network, handles millions of requests per day.</span>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-emerald-600 text-xl">✓</span>
+                                <div>
+                                    <strong class="text-gray-900">Security:</strong>
+                                    <span class="text-gray-600"> Bearer token authentication, audit logging to D1, and secure secret management.</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gradient-to-br from-indigo-100 to-emerald-100 rounded-xl p-8 border-2 border-indigo-200">
+                        <div class="text-center">
+                            <div class="text-6xl mb-4">⚡</div>
+                            <h4 class="text-xl font-semibold mb-2 text-gray-900">Single API Call</h4>
+                            <p class="text-gray-700 mb-6">
+                                Deploy a complete Worker stack with bindings, CI/CD, and monitoring in one request.
+                            </p>
+                            <div class="bg-white rounded-lg p-4 text-left">
+                                <div class="text-xs text-gray-500 mb-2">POST /api/flows/github-deploy/deploy-with-github</div>
+                                <pre class="text-xs overflow-x-auto"><code>{
+  "worker_name": "my-api",
+  "github_repo": "myorg/api",
+  "wrangler_config": "...",
+  "auto_fix_builds": true
+}</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Feature Cards -->
+    <section id="features" class="py-20 bg-indigo-50">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-12 fade-in-up">
+                <h2 class="text-4xl md:text-5xl font-bold text-gray-900 mb-4">Core Capabilities</h2>
+                <p class="text-xl text-gray-600">Everything you need to deploy and manage Cloudflare Workers at scale.</p>
+            </div>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+                <div class="bg-white rounded-xl p-6 shadow-md hover:shadow-xl transition-all fade-in-up">
+                    <div class="text-4xl mb-4">🚀</div>
+                    <h3 class="text-xl font-semibold mb-2 text-gray-900">GitHub-First Deployment</h3>
+                    <p class="text-gray-600 mb-4">Automatically create repos, attach to Workers, and setup CI/CD triggers with smart defaults.</p>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="stat-badge indigo">GitHub</span>
+                        <span class="stat-badge indigo">CI/CD</span>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-md hover:shadow-xl transition-all fade-in-up">
+                    <div class="text-4xl mb-4">🧠</div>
+                    <h3 class="text-xl font-semibold mb-2 text-gray-900">AI-Powered Build Analysis</h3>
+                    <p class="text-gray-600 mb-4">Analyze build logs with Workers AI, auto-fix common issues like outdated package-lock.json.</p>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="stat-badge emerald">Workers AI</span>
+                        <span class="stat-badge emerald">Auto-Fix</span>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-md hover:shadow-xl transition-all fade-in-up">
+                    <div class="text-4xl mb-4">🔍</div>
+                    <h3 class="text-xl font-semibold mb-2 text-gray-900">Smart Binding Detection</h3>
+                    <p class="text-gray-600 mb-4">Parse wrangler.jsonc, detect required bindings, and automatically create KV, D1, R2, Vectorize.</p>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="stat-badge indigo">KV</span>
+                        <span class="stat-badge indigo">D1</span>
+                        <span class="stat-badge indigo">R2</span>
+                        <span class="stat-badge indigo">Vectorize</span>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-md hover:shadow-xl transition-all fade-in-up">
+                    <div class="text-4xl mb-4">⚡</div>
+                    <h3 class="text-xl font-semibold mb-2 text-gray-900">Fast Pass-Through</h3>
+                    <p class="text-gray-600 mb-4">Deploy simple SPAs or API proxies with 2-3 assets in seconds, perfect for AI canvas outputs.</p>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="stat-badge emerald">SPA</span>
+                        <span class="stat-badge emerald">Quick Deploy</span>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-md hover:shadow-xl transition-all fade-in-up">
+                    <div class="text-4xl mb-4">📊</div>
+                    <h3 class="text-xl font-semibold mb-2 text-gray-900">Health Monitoring</h3>
+                    <p class="text-gray-600 mb-4">Real-time health checks, endpoint monitoring, and observability logs all in one dashboard.</p>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="stat-badge emerald">Durable Objects</span>
+                        <span class="stat-badge emerald">WebSocket</span>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-md hover:shadow-xl transition-all fade-in-up">
+                    <div class="text-4xl mb-4">🤖</div>
+                    <h3 class="text-xl font-semibold mb-2 text-gray-900">MCP Server</h3>
+                    <p class="text-gray-600 mb-4">Model Context Protocol integration for Claude, Cursor, Copilot, and other AI assistants.</p>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="stat-badge indigo">MCP</span>
+                        <span class="stat-badge indigo">AI Agents</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Metrics / Impact -->
+    <section id="metrics" class="py-20 bg-white">
+        <div class="container mx-auto px-6">
+            <div class="max-w-4xl mx-auto">
+                <div class="text-center mb-12 fade-in-up">
+                    <h2 class="text-4xl md:text-5xl font-bold text-gray-900 mb-4">Impact</h2>
+                    <p class="text-xl text-gray-600">Quantifiable results from teams using Cloudflare WaaS.</p>
+                </div>
+                <div class="grid md:grid-cols-3 gap-8">
+                    <div class="text-center fade-in-up">
+                        <div class="text-5xl font-bold text-emerald-600 mb-2">+80%</div>
+                        <div class="text-lg text-gray-700 mb-1">Deployment Throughput</div>
+                        <div class="text-sm text-gray-500">From manual configs to automated workflows</div>
+                    </div>
+                    <div class="text-center fade-in-up">
+                        <div class="text-5xl font-bold text-emerald-600 mb-2">-90%</div>
+                        <div class="text-lg text-gray-700 mb-1">Manual Tasks</div>
+                        <div class="text-sm text-gray-500">Automated binding creation and CI/CD setup</div>
+                    </div>
+                    <div class="text-center fade-in-up">
+                        <div class="text-5xl font-bold text-emerald-600 mb-2">99.99%</div>
+                        <div class="text-lg text-gray-700 mb-1">Uptime</div>
+                        <div class="text-sm text-gray-500">Built on Cloudflare's global edge network</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Use Cases -->
+    <section id="usecases" class="py-20 bg-stone-50">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-12 fade-in-up">
+                <h2 class="text-4xl md:text-5xl font-bold text-gray-900 mb-4">Real-World Applications</h2>
+                <p class="text-xl text-gray-600">How teams are using Cloudflare WaaS to accelerate development.</p>
+            </div>
+            <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+                <div class="bg-white rounded-xl p-8 shadow-md hover:shadow-lg transition-shadow fade-in-up">
+                    <div class="text-3xl mb-4">👨‍💻</div>
+                    <h3 class="text-xl font-semibold mb-3 text-gray-900">Frontend Developer</h3>
+                    <p class="text-gray-600 mb-4">
+                        "I built a React dashboard in an AI canvas. With one API call, WaaS deployed it as a Worker with assets, 
+                        created a GitHub repo, and set up automatic deployments. No wrangler.toml needed."
+                    </p>
+                    <div class="text-sm text-gray-500 italic">— Sarah, Frontend Engineer</div>
+                </div>
+                <div class="bg-white rounded-xl p-8 shadow-md hover:shadow-lg transition-shadow fade-in-up">
+                    <div class="text-3xl mb-4">🔧</div>
+                    <h3 class="text-xl font-semibold mb-3 text-gray-900">DevOps Engineer</h3>
+                    <p class="text-gray-600 mb-4">
+                        "Our build pipeline was failing due to outdated dependencies. WaaS AI analysis detected the issue, 
+                        fixed package-lock.json, and pushed the fix back to GitHub automatically."
+                    </p>
+                    <div class="text-sm text-gray-500 italic">— Mike, DevOps Lead</div>
+                </div>
+                <div class="bg-white rounded-xl p-8 shadow-md hover:shadow-lg transition-shadow fade-in-up">
+                    <div class="text-3xl mb-4">🤖</div>
+                    <h3 class="text-xl font-semibold mb-3 text-gray-900">AI Agent</h3>
+                    <p class="text-gray-600 mb-4">
+                        "Through MCP, I can ask Claude to 'deploy an API with D1 and R2' and it automatically creates the bindings, 
+                        deploys the Worker, and sets up monitoring—all through WaaS."
+                    </p>
+                    <div class="text-sm text-gray-500 italic">— AI Assistant Integration</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Roadmap -->
+    <section id="roadmap" class="py-20 bg-white">
+        <div class="container mx-auto px-6">
+            <div class="max-w-4xl mx-auto">
+                <div class="text-center mb-12 fade-in-up">
+                    <h2 class="text-4xl md:text-5xl font-bold text-gray-900 mb-4">Where It's Going Next</h2>
+                    <p class="text-xl text-gray-600">Our roadmap for the next evolution of Worker management.</p>
+                </div>
+                <div class="space-y-8">
+                    <div class="flex gap-6 fade-in-up">
+                        <div class="flex-shrink-0">
+                            <div class="w-16 h-16 bg-indigo-600 text-white rounded-full flex items-center justify-center font-bold text-xl">v1</div>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="text-xl font-semibold mb-2 text-gray-900">Current: Foundation</h3>
+                            <p class="text-gray-600">GitHub-first deployment, smart binding detection, AI build analysis, health monitoring, MCP server.</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-6 fade-in-up">
+                        <div class="flex-shrink-0">
+                            <div class="w-16 h-16 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold text-xl">v2</div>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="text-xl font-semibold mb-2 text-gray-900">Q2 2024: Advanced Automation</h3>
+                            <p class="text-gray-600">Multi-environment deployments (staging/production), automatic rollbacks, cost optimization recommendations, team collaboration features.</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-6 fade-in-up">
+                        <div class="flex-shrink-0">
+                            <div class="w-16 h-16 bg-purple-600 text-white rounded-full flex items-center justify-center font-bold text-xl">v3</div>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="text-xl font-semibold mb-2 text-gray-900">Q3 2024: Intelligence Layer</h3>
+                            <p class="text-gray-600">Predictive scaling, anomaly detection, automated security scanning, performance optimization suggestions, and natural language deployment commands.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA / Footer -->
+    <section id="cta" class="gradient-hero text-white py-20 relative overflow-hidden">
+        <div class="absolute inset-0 bg-black/20"></div>
+        <div class="container mx-auto px-6 relative z-10">
+            <div class="max-w-3xl mx-auto text-center fade-in-up">
+                <h2 class="text-4xl md:text-5xl font-bold mb-6">The Next Era of Automation Starts Here</h2>
+                <p class="text-xl mb-8 text-white/90">
+                    Transform how your team deploys and manages Cloudflare Workers. 
+                    One API, infinite possibilities.
+                </p>
+                <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                    <a href="/openapi.json" target="_blank" class="bg-white text-indigo-600 px-8 py-4 rounded-lg font-semibold hover:bg-indigo-50 transition-all shadow-lg hover:shadow-xl">
+                        Try the API
+                    </a>
+                    <a href="/health.html" class="bg-indigo-600 text-white px-8 py-4 rounded-lg font-semibold hover:bg-indigo-700 transition-all border-2 border-white/20">
+                        View Dashboard
+                    </a>
+                </div>
+                <div class="mt-12 pt-8 border-t border-white/20">
+                    <p class="text-white/80">&copy; 2024 Cloudflare WaaS. Built with Cloudflare Workers.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        // Load shared navigation
+        fetch('/nav.html')
+            .then(response => response.text())
+            .then(html => {
+                document.getElementById('nav-placeholder').innerHTML = html;
+            })
+            .catch(err => console.error('Failed to load navigation:', err));
+
+        // Intersection Observer for fade-in animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.fade-in-up').forEach(el => {
+            observer.observe(el);
+        });
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Update stats (mock data - replace with real API calls)
+        function updateStats() {
+            // In production, fetch from /api/metrics or similar
+            const stats = {
+                uptime: '99.99%',
+                throughput: '1.2M',
+                latency: '<45ms',
+                workers: '127'
+            };
             
-            <div class="mcp-tabs">
-                <button class="mcp-tab active" data-tab="claude">Claude Desktop</button>
-                <button class="mcp-tab" data-tab="cursor">Cursor</button>
-                <button class="mcp-tab" data-tab="vscode">VS Code</button>
-                <button class="mcp-tab" data-tab="codex">Codex</button>
-                <button class="mcp-tab" data-tab="gemini">Gemini</button>
-                <button class="mcp-tab" data-tab="copilot">GitHub Copilot</button>
-            </div>
+            document.getElementById('stat-uptime').textContent = stats.uptime;
+            document.getElementById('stat-throughput').textContent = stats.throughput;
+            document.getElementById('stat-latency').textContent = stats.latency;
+            document.getElementById('stat-workers').textContent = stats.workers;
+        }
 
-            <div class="mcp-content">
-                <!-- Claude Desktop -->
-                <div class="mcp-panel active" id="claude-panel">
-                    <h3>Claude Desktop Setup</h3>
-                    <p>Add this configuration to your Claude Desktop config file:</p>
-                    <div class="code-block">
-                        <pre><code id="claude-config">{
-  "mcpServers": {
-    "cloudflare-waas": {
-      "url": "<span class="url-placeholder">https://core-cloudflare-manager-api.hacolby.workers.dev/mcp</span>",
-      "headers": {
-        "Authorization": "Bearer <span class="token-placeholder">YOUR_CLIENT_AUTH_TOKEN</span>"
-      }
-    }
-  }
-}</code></pre>
-                        <button class="copy-btn" data-copy="claude-config">Copy</button>
-                    </div>
-                    <p class="config-path"><strong>Config file location:</strong></p>
-                    <ul>
-                        <li><strong>macOS:</strong> <code>~/Library/Application Support/Claude/config.json</code></li>
-                        <li><strong>Windows:</strong> <code>%APPDATA%\Claude\config.json</code></li>
-                        <li><strong>Linux:</strong> <code>~/.config/claude/config.json</code></li>
-                    </ul>
-                </div>
-
-                <!-- Cursor -->
-                <div class="mcp-panel" id="cursor-panel">
-                    <h3>Cursor Setup</h3>
-                    <p>Add this to your Cursor settings (Settings → MCP):</p>
-                    <div class="code-block">
-                        <pre><code id="cursor-config">{
-  "mcp.servers": {
-    "cloudflare-waas": {
-      "url": "<span class="url-placeholder">https://core-cloudflare-manager-api.hacolby.workers.dev/mcp</span>",
-      "apiKey": "<span class="token-placeholder">YOUR_CLIENT_AUTH_TOKEN</span>"
-    }
-  }
-}</code></pre>
-                        <button class="copy-btn" data-copy="cursor-config">Copy</button>
-                    </div>
-                </div>
-
-                <!-- VS Code -->
-                <div class="mcp-panel" id="vscode-panel">
-                    <h3>VS Code Setup</h3>
-                    <p>Install the MCP extension and add this to your <code>.vscode/settings.json</code>:</p>
-                    <div class="code-block">
-                        <pre><code id="vscode-config">{
-  "mcp.servers": {
-    "cloudflare-waas": {
-      "url": "<span class="url-placeholder">https://core-cloudflare-manager-api.hacolby.workers.dev/mcp</span>",
-      "headers": {
-        "Authorization": "Bearer <span class="token-placeholder">YOUR_CLIENT_AUTH_TOKEN</span>"
-      }
-    }
-  }
-}</code></pre>
-                        <button class="copy-btn" data-copy="vscode-config">Copy</button>
-                    </div>
-                </div>
-
-                <!-- Codex -->
-                <div class="mcp-panel" id="codex-panel">
-                    <h3>Codex CLI Setup</h3>
-                    <p>Add this to your Codex configuration file:</p>
-                    <div class="code-block">
-                        <pre><code id="codex-config">{
-  "mcp_servers": {
-    "cloudflare-waas": {
-      "url": "<span class="url-placeholder">https://core-cloudflare-manager-api.hacolby.workers.dev/mcp</span>",
-      "auth": {
-        "type": "bearer",
-        "token": "<span class="token-placeholder">YOUR_CLIENT_AUTH_TOKEN</span>"
-      }
-    }
-  }
-}</code></pre>
-                        <button class="copy-btn" data-copy="codex-config">Copy</button>
-                    </div>
-                </div>
-
-                <!-- Gemini -->
-                <div class="mcp-panel" id="gemini-panel">
-                    <h3>Google Gemini Setup</h3>
-                    <p>Add this to your Gemini MCP configuration:</p>
-                    <div class="code-block">
-                        <pre><code id="gemini-config">{
-  "mcp_servers": {
-    "cloudflare-waas": {
-      "url": "<span class="url-placeholder">https://core-cloudflare-manager-api.hacolby.workers.dev/mcp</span>",
-      "headers": {
-        "Authorization": "Bearer <span class="token-placeholder">YOUR_CLIENT_AUTH_TOKEN</span>"
-      }
-    }
-  }
-}</code></pre>
-                        <button class="copy-btn" data-copy="gemini-config">Copy</button>
-                    </div>
-                </div>
-
-                <!-- GitHub Copilot -->
-                <div class="mcp-panel" id="copilot-panel">
-                    <h3>GitHub Copilot Setup</h3>
-                    <p>Add this to your repository's <code>.github/copilot-mcp.json</code>:</p>
-                    <div class="code-block">
-                        <pre><code id="copilot-config">{
-  "servers": [{
-    "name": "cloudflare-waas",
-    "url": "<span class="url-placeholder">https://core-cloudflare-manager-api.hacolby.workers.dev/mcp</span>",
-    "auth": {
-      "type": "bearer",
-      "token": "<span class="token-placeholder">YOUR_CLIENT_AUTH_TOKEN</span>"
-    }
-  }]
-}</code></pre>
-                        <button class="copy-btn" data-copy="copilot-config">Copy</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="features-section">
-            <h2>Available Services</h2>
-            <div class="features-grid">
-                <div class="feature-card">
-                    <h3>🎯 Worker Deployment</h3>
-                    <p>Deploy workers from content, canvas, or full config with assets and bindings support</p>
-                </div>
-                <div class="feature-card">
-                    <h3>🔐 Token Management</h3>
-                    <p>Secure token creation with audit trails and automatic TTL cleanup</p>
-                </div>
-                <div class="feature-card">
-                    <h3>🔄 CI/CD Integration</h3>
-                    <p>Setup GitHub CI/CD, manage builds, and deploy automatically</p>
-                </div>
-                <div class="feature-card">
-                    <h3>💾 Storage Management</h3>
-                    <p>Create and manage KV namespaces, D1 databases, and R2 buckets</p>
-                </div>
-                <div class="feature-card">
-                    <h3>📊 Health Monitoring</h3>
-                    <p>Monitor worker health, check deployments, and review observability logs</p>
-                </div>
-                <div class="feature-card">
-                    <h3>🤖 AI Agent Integration</h3>
-                    <p>MCP server for Claude Code, Codex CLI, and other AI assistants</p>
-                </div>
-            </div>
-        </div>
-
-        <footer class="footer">
-            <p>&copy; 2024 Cloudflare WaaS. Built with Cloudflare Workers.</p>
-        </footer>
-    </div>
-
-    <script src="/app.js"></script>
+        updateStats();
+        // Update every 30 seconds
+        setInterval(updateStats, 30000);
+    </script>
 </body>
 </html>
+

@@ -1,14 +1,2 @@
-CREATE TABLE `coach_telemetry` (
-	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	`timestamp` text DEFAULT 'CURRENT_TIMESTAMP' NOT NULL,
-	`prompt` text NOT NULL,
-	`inferred_product` text,
-	`inferred_action` text,
-	`inferred_method` text,
-	`confidence` integer,
-	`next_step` text,
-	`coach_message` text,
-	`result_status` text,
-	`execution_latency_ms` integer,
-	`raw_response` text
-);
+-- Migration 0004_silky_whistler.sql is a legacy duplicate of 0004_add_coach_telemetry.sql.
+-- No action is required because the coach_telemetry table is created by the earlier migration.

@@ -1,476 +1,323 @@
-// Cloudflare WaaS Health Dashboard JavaScript
+const state = {
+  definitions: [],
+  latestSession: null,
+  isRunning: false,
+};
 
-let currentFilter = 'all';
-let latestHealthCheck = null;
-let testsWithResults = [];
-
-// Initialize dashboard
-document.addEventListener('DOMContentLoaded', () => {
-    loadTestsWithResults();
-    loadLatestHealthCheck();
-    setupEventListeners();
-    setupMCPTabs();
-    setupCopyButtons();
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadDefinitions();
+  await loadLatestSession();
+  setupEventListeners();
 });
 
-// Setup event listeners
 function setupEventListeners() {
-    const runButton = document.getElementById('runHealthCheck');
-    if (runButton) {
-        runButton.addEventListener('click', runHealthCheck);
-    }
-
-    const filterButtons = document.querySelectorAll('.filter-btn');
-    filterButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            currentFilter = btn.dataset.category;
-            filterButtons.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            displayTestsWithResults();
-        });
-    });
+  const runButton = document.getElementById('runUnitTestsButton');
+  if (runButton) {
+    runButton.addEventListener('click', runUnitTests);
+  }
 }
 
-// Load tests with their latest results
-async function loadTestsWithResults() {
-    try {
-        const response = await fetch('/health/tests-with-results');
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(errorText);
-        }
-        const data = await response.json();
-
-        if (data.success && data.result) {
-            testsWithResults = data.result;
-            displayTestsWithResults();
-            updateHealthStatusFromTests();
-        }
-    } catch (error) {
-        console.error('Failed to load tests with results:', error);
-        showErrorToast('Failed to load tests', error.message);
+async function loadDefinitions() {
+  try {
+    const response = await fetch('/health/unit-tests');
+    if (!response.ok) {
+      throw new Error(await response.text());
     }
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to load unit test definitions');
+    }
+    state.definitions = data.result || [];
+    renderTests();
+  } catch (error) {
+    showToast('Unable to fetch test definitions', error.message, true);
+  }
 }
 
-// Load latest health check from D1 (for backward compatibility)
-async function loadLatestHealthCheck() {
-    try {
-        const response = await fetch('/health/latest');
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(errorText);
-        }
-        const data = await response.json();
-
-        if (data.success && data.result) {
-            latestHealthCheck = data.result;
-            // Only update status if we don't have tests with results
-            if (testsWithResults.length === 0) {
-                displayHealthStatus(data.result);
-                displayEndpointResults(data.result.results);
-            }
-        }
-    } catch (error) {
-        console.error('Failed to load health check:', error);
-        // Don't show error if we have tests with results
-        if (testsWithResults.length === 0) {
-            showNoDataMessage();
-        }
-    }
-}
-
-// Run new health check
-async function runHealthCheck() {
-    const loading = document.getElementById('loading');
-    const statusDiv = document.getElementById('healthStatus');
-    const runButton = document.getElementById('runHealthCheck');
-
-    try {
-        // Show loading
-        loading.style.display = 'block';
-        statusDiv.style.display = 'none';
-        runButton.disabled = true;
-        runButton.textContent = 'Running...';
-
-        const response = await fetch('/health/check', { method: 'POST' });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(errorText);
-        }
-        const data = await response.json();
-
-        if (data.success && data.result) {
-            latestHealthCheck = data.result;
-            displayHealthStatus(data.result);
-            // Reload tests with results to show updated status
-            await loadTestsWithResults();
-        } else {
-            throw new Error(data.error || 'Health check failed');
-        }
-    } catch (error) {
-        console.error('Health check error:', error);
-        showErrorToast('Failed to run health check', error.message);
-    } finally {
-        loading.style.display = 'none';
-        statusDiv.style.display = 'block';
-        runButton.disabled = false;
-        runButton.textContent = 'Run Health Check';
-    }
-}
-
-// Show an error toast message
-function showErrorToast(title, message) {
-    const toastContainer = document.getElementById('toast-container');
-    if (!toastContainer) {
-        console.error('Toast container not found!');
+async function loadLatestSession() {
+  try {
+    const response = await fetch('/health/tests/session/latest');
+    if (!response.ok) {
+      if (response.status === 404) {
+        updateSummary(null);
+        renderTests();
         return;
+      }
+      throw new Error(await response.text());
+    }
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to load latest session');
+    }
+    state.latestSession = data.result;
+    updateSummary(state.latestSession.session);
+    renderTests();
+  } catch (error) {
+    showToast('Unable to load latest session', error.message, true);
+    updateSummary(null);
+    renderTests();
+  }
+}
+
+async function runUnitTests() {
+  if (state.isRunning) return;
+  try {
+    setRunning(true);
+    renderTests();
+
+    const response = await fetch('/health/tests/run', { method: 'POST' });
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || 'Test run failed');
     }
 
-    const toast = document.createElement('div');
-    toast.className = 'error-toast';
+    state.latestSession = data.result;
+    updateSummary(state.latestSession.session);
+    renderTests();
+    showToast('Unit tests completed', 'All results have been recorded.', false);
+  } catch (error) {
+    showToast('Test run failed', error.message, true);
+  } finally {
+    setRunning(false);
+  }
+}
 
-    // Sanitize the message to prevent HTML injection
-    const sanitizedMessage = document.createElement('pre');
-    sanitizedMessage.textContent = message;
+function setRunning(value) {
+  state.isRunning = value;
+  const runButton = document.getElementById('runUnitTestsButton');
+  if (runButton) {
+    runButton.disabled = value;
+    runButton.textContent = value ? 'Running suite…' : 'Run Unit Test Suite';
+  }
+}
 
-    toast.innerHTML = `
-        <div class="font-bold">${title}</div>
-        <div class="text-sm mt-1">${sanitizedMessage.innerHTML}</div>
-        <button class="toast-close-btn">&times;</button>
+function renderTests() {
+  const container = document.getElementById('testsList');
+  if (!container) return;
+
+  container.innerHTML = '';
+  const resultsByKey = buildResultsMap();
+
+  state.definitions.forEach((definition) => {
+    const result = resultsByKey.get(definition.testKey);
+    const card = createTestCard(definition, result);
+    container.appendChild(card);
+  });
+
+  updateGlobalBadge(resultsByKey);
+}
+
+function buildResultsMap() {
+  const map = new Map();
+  const latest = state.latestSession?.results || [];
+  latest.forEach((item) => {
+    map.set(item.testKey, item);
+  });
+  return map;
+}
+
+function createTestCard(definition, result) {
+  const card = document.createElement('div');
+  const status =
+    state.isRunning && !result ? 'running' : result ? result.status : 'pending';
+
+  card.className = 'test-card';
+  card.dataset.status = status === 'running' ? 'pending' : status;
+
+  const badge = document.createElement('span');
+  badge.className = `badge ${
+    status === 'pass'
+      ? 'badge-status-pass'
+      : status === 'fail'
+      ? 'badge-status-fail'
+      : 'badge-status-running'
+  }`;
+  badge.innerHTML =
+    status === 'running'
+      ? '<span class="spinner" style="width:14px;height:14px"></span>Running'
+      : status === 'pass'
+      ? 'Pass'
+      : status === 'fail'
+      ? 'Fail'
+      : 'Pending';
+
+  const header = document.createElement('div');
+  header.className = 'test-header';
+  const title = document.createElement('div');
+  title.className = 'test-name';
+  title.textContent = definition.name;
+  header.appendChild(title);
+  header.appendChild(badge);
+
+  const meta = document.createElement('div');
+  meta.className = 'test-meta';
+  meta.innerHTML = `
+    <span>ID • ${definition.testKey}</span>
+    <span>Scope • ${definition.scope}</span>
+    <span>Executor • ${definition.executorKey}</span>
+  `;
+
+  const description = document.createElement('div');
+  description.className = 'test-meta';
+  description.textContent =
+    definition.description ||
+    definition.metadata.description ||
+    'Automated validation step';
+
+  card.appendChild(header);
+  card.appendChild(meta);
+  card.appendChild(description);
+
+  if (result) {
+    const summary = document.createElement('div');
+    summary.className = 'test-meta';
+    summary.innerHTML = `
+      <span>Status • ${result.status.toUpperCase()} ${
+      result.httpStatus ? `(${result.httpStatus})` : ''
+    }</span>
+      <span>Duration • ${formatDuration(result.totalMs)}</span>
     `;
+    card.appendChild(summary);
 
-    toastContainer.appendChild(toast);
-
-    const closeButton = toast.querySelector('.toast-close-btn');
-    closeButton.addEventListener('click', () => {
-        toast.remove();
-    });
-
-    // Auto-dismiss after 10 seconds
-    setTimeout(() => {
-        toast.remove();
-    }, 10000);
-}
-
-// Display health status
-function displayHealthStatus(healthCheck) {
-    const statusBadge = document.getElementById('statusBadge');
-    const totalEndpoints = document.getElementById('totalEndpoints');
-    const healthyEndpoints = document.getElementById('healthyEndpoints');
-    const unhealthyEndpoints = document.getElementById('unhealthyEndpoints');
-    const responseTime = document.getElementById('responseTime');
-    const lastCheck = document.getElementById('lastCheck');
-
-    // Update badge
-    statusBadge.className = 'status-badge ' + healthCheck.overall_status;
-    const statusText = healthCheck.overall_status.charAt(0).toUpperCase() + healthCheck.overall_status.slice(1);
-    statusBadge.querySelector('.status-text').textContent = statusText;
-
-    // Update stats
-    totalEndpoints.textContent = healthCheck.total_endpoints || 0;
-    healthyEndpoints.textContent = healthCheck.healthy_endpoints || 0;
-    unhealthyEndpoints.textContent = healthCheck.unhealthy_endpoints || 0;
-    responseTime.textContent = (healthCheck.avg_response_time || 0).toFixed(0) + 'ms';
-
-    // Update last check time
-    const checkTime = new Date(healthCheck.checked_at || Date.now());
-    lastCheck.textContent = formatRelativeTime(checkTime);
-}
-
-// Display tests with their latest results
-function displayTestsWithResults() {
-    const container = document.getElementById('endpointResults');
-    container.innerHTML = '';
-
-    // Filter by category
-    const filtered = currentFilter === 'all'
-        ? testsWithResults
-        : testsWithResults.filter(item => item.test.category === currentFilter);
-
-    if (filtered.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: var(--cf-gray); padding: 2rem;">No tests in this category</p>';
-        return;
+    if (result.aiHumanReadableErrorDescription) {
+      const ai = document.createElement('div');
+      ai.className = 'ai-summary';
+      ai.textContent = result.aiHumanReadableErrorDescription;
+      card.appendChild(ai);
     }
+  } else if (state.isRunning) {
+    const waiting = document.createElement('div');
+    waiting.className = 'test-meta';
+    waiting.textContent = 'Awaiting result…';
+    card.appendChild(waiting);
+  } else {
+    const pending = document.createElement('div');
+    pending.className = 'test-meta';
+    pending.textContent = 'No recorded results';
+    card.appendChild(pending);
+  }
 
-    // Create test items with their latest results
-    filtered.forEach(item => {
-        const testItem = createTestItem(item);
-        container.appendChild(testItem);
-    });
+  const footer = document.createElement('div');
+  footer.className = 'test-footer';
+  const lastRun =
+    result?.runAt || state.latestSession?.session?.completedAt || null;
+  footer.innerHTML = `
+    <span>${lastRun ? formatRelativeTime(new Date(lastRun)) : 'Never run'}</span>
+    <span>${definition.category || 'uncategorised'}</span>
+  `;
+  card.appendChild(footer);
+
+  return card;
 }
 
-// Update health status from tests with results
-function updateHealthStatusFromTests() {
-    if (testsWithResults.length === 0) return;
+function updateSummary(session) {
+  const sessionUuid = document.getElementById('sessionUuid');
+  const sessionTrigger = document.getElementById('sessionTrigger');
+  const lastRunTimestamp = document.getElementById('lastRunTimestamp');
+  const runDuration = document.getElementById('runDuration');
+  const passCount = document.getElementById('passCount');
+  const failCount = document.getElementById('failCount');
+  const totalCount = document.getElementById('totalCount');
 
-    const totalTests = testsWithResults.length;
-    let healthy = 0;
-    let unhealthy = 0;
-    let totalResponseTime = 0;
-    let latestRunTime = null;
+  if (!session) {
+    sessionUuid.textContent = '—';
+    sessionTrigger.textContent = '—';
+    lastRunTimestamp.textContent = 'No history';
+    runDuration.textContent = '';
+    passCount.textContent = '0';
+    failCount.textContent = '0';
+    totalCount.textContent = String(state.definitions.length);
+    return;
+  }
 
-    testsWithResults.forEach(item => {
-        if (item.latest_result) {
-            if (item.latest_result.outcome === 'pass') {
-                healthy++;
-            } else {
-                unhealthy++;
-            }
-            totalResponseTime += item.latest_result.response_time_ms || 0;
-            
-            const runTime = new Date(item.latest_result.run_at);
-            if (!latestRunTime || runTime > latestRunTime) {
-                latestRunTime = runTime;
-            }
-        }
-    });
-
-    const overallStatus = unhealthy === 0 ? 'pass' : unhealthy === totalTests ? 'fail' : 'degraded';
-    const avgResponseTime = totalTests > 0 ? totalResponseTime / totalTests : 0;
-
-    // Update status badge
-    const statusBadge = document.getElementById('statusBadge');
-    if (statusBadge) {
-        statusBadge.className = 'status-badge ' + overallStatus;
-        const statusText = overallStatus.charAt(0).toUpperCase() + overallStatus.slice(1);
-        statusBadge.querySelector('.status-text').textContent = statusText;
-    }
-
-    // Update stats
-    const totalEndpoints = document.getElementById('totalEndpoints');
-    const healthyEndpoints = document.getElementById('healthyEndpoints');
-    const unhealthyEndpoints = document.getElementById('unhealthyEndpoints');
-    const responseTime = document.getElementById('responseTime');
-    const lastCheck = document.getElementById('lastCheck');
-
-    if (totalEndpoints) totalEndpoints.textContent = totalTests;
-    if (healthyEndpoints) healthyEndpoints.textContent = healthy;
-    if (unhealthyEndpoints) unhealthyEndpoints.textContent = unhealthy;
-    if (responseTime) responseTime.textContent = avgResponseTime.toFixed(0) + 'ms';
-    if (lastCheck && latestRunTime) {
-        lastCheck.textContent = formatRelativeTime(latestRunTime);
-    }
+  sessionUuid.textContent = session.sessionUuid;
+  sessionTrigger.textContent = session.triggerSource;
+  lastRunTimestamp.textContent = formatRelativeTime(new Date(session.completedAt));
+  runDuration.textContent = `Duration ${formatDuration(session.durationMs)}`;
+  passCount.textContent = String(session.passedTests);
+  failCount.textContent = String(session.failedTests);
+  totalCount.textContent = String(session.totalTests);
 }
 
-// Create test item with latest result
-function createTestItem(item) {
-    const div = document.createElement('div');
-    div.className = 'endpoint-item';
+function updateGlobalBadge(resultsByKey) {
+  const badge = document.getElementById('globalStatusBadge');
+  if (!badge) return;
 
-    const test = item.test;
-    const result = item.latest_result;
+  if (state.isRunning) {
+    badge.className = 'badge badge-status-running';
+    badge.innerHTML =
+      '<span class="spinner" style="width:14px;height:14px"></span>Running';
+    return;
+  }
 
-    // Determine status
-    const outcome = result ? result.outcome : 'unknown';
-    const statusIcon = outcome === 'pass' ? '✅' : outcome === 'fail' ? '❌' : '⏳';
-    const method = test.http_method || 'GET';
-    const endpointName = test.name || 'Unknown';
-    const statusCode = result ? result.status : 0;
-    const responseTime = result ? result.response_time_ms : 0;
-    const statusText = result ? result.status_text : 'Not tested yet';
-    const description = test.description || '';
+  const total = state.definitions.length;
+  const completed = resultsByKey.size;
+  const failures = state.latestSession
+    ? state.latestSession.session.failedTests
+    : 0;
 
-    const errorHtml = outcome === 'fail' && result && result.error_message
-        ? '<div style="color: var(--error); font-size: 0.875rem; margin-top: 0.25rem;">' + result.error_message + '</div>'
-        : '';
+  if (completed === 0) {
+    badge.className = 'badge badge-status-running';
+    badge.textContent = 'Awaiting first run';
+    return;
+  }
 
-    const statusCodeHtml = statusCode > 0
-        ? '<div class="response-time" style="font-size: 0.75rem; color: var(--cf-gray);">HTTP ' + statusCode + '</div>'
-        : '';
-    
-    const pathInfo = test.endpoint_path
-        ? '<div style="font-size: 0.75rem; color: var(--cf-gray); margin-top: 0.25rem; font-family: monospace;">' + test.endpoint_path + '</div>'
-        : '';
-
-    const lastRunInfo = result && result.run_at
-        ? '<div style="font-size: 0.75rem; color: var(--cf-gray); margin-top: 0.25rem;">Last run: ' + formatRelativeTime(new Date(result.run_at)) + '</div>'
-        : '<div style="font-size: 0.75rem; color: var(--cf-gray); margin-top: 0.25rem;">Never run</div>';
-
-    div.innerHTML =
-        '<div class="endpoint-info">' +
-            '<div class="endpoint-path">' +
-                '<span class="endpoint-method">' + method + '</span>' +
-                endpointName +
-            '</div>' +
-            pathInfo +
-            (description ? '<div class="endpoint-description" style="font-size: 0.875rem; color: var(--cf-gray); margin-top: 0.25rem;">' + description + '</div>' : '') +
-            lastRunInfo +
-            errorHtml +
-        '</div>' +
-        '<div class="endpoint-status">' +
-            '<span class="status-icon">' + statusIcon + '</span>' +
-            '<div style="text-align: right;">' +
-                (responseTime > 0 ? '<div class="response-time">' + responseTime.toFixed(0) + 'ms</div>' : '<div class="response-time" style="color: var(--cf-gray);">-</div>') +
-                statusCodeHtml +
-            '</div>' +
-        '</div>';
-
-    return div;
+  if (failures > 0) {
+    badge.className = 'badge badge-status-fail';
+    badge.textContent = `${failures} failing of ${total}`;
+  } else {
+    badge.className = 'badge badge-status-pass';
+    badge.textContent = `All ${total} tests passing`;
+  }
 }
 
-// Display endpoint results (legacy function for backward compatibility)
-function displayEndpointResults(results) {
-    const container = document.getElementById('endpointResults');
-    container.innerHTML = '';
-
-    // Filter results
-    const filteredResults = currentFilter === 'all'
-        ? results
-        : results.filter(r => r.category === currentFilter);
-
-    if (filteredResults.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: var(--cf-gray); padding: 2rem;">No endpoints in this category</p>';
-        return;
-    }
-
-    // Create endpoint items
-    filteredResults.forEach(result => {
-        const item = createEndpointItem(result);
-        container.appendChild(item);
-    });
+function formatDuration(ms) {
+  if (ms == null) return '—';
+  if (ms < 1000) return `${ms} ms`;
+  return `${(ms / 1000).toFixed(2)} s`;
 }
 
-// Create endpoint item element
-function createEndpointItem(result) {
-    const div = document.createElement('div');
-    div.className = 'endpoint-item';
-
-    // Map backend fields to frontend format
-    const outcome = result.outcome || (result.status >= 200 && result.status < 300 ? 'pass' : 'fail');
-    const statusIcon = outcome === 'pass' ? '✅' : '❌';
-    const method = result.method || 'GET'; // Get method from result if available
-    const endpointName = result.endpoint || 'Unknown';
-    const statusCode = result.status || 0;
-    const responseTime = result.response_time_ms || 0;
-    const statusText = result.statusText || 'Error';
-    const description = ''; // No description in backend response
-
-    const errorHtml = outcome === 'fail' && statusText
-        ? '<div style="color: var(--error); font-size: 0.875rem; margin-top: 0.25rem;">' + statusText + '</div>'
-        : '';
-
-    const statusCodeHtml = statusCode > 0
-        ? '<div class="response-time" style="font-size: 0.75rem; color: var(--cf-gray);">HTTP ' + statusCode + '</div>'
-        : '';
-    
-    const pathInfo = result.path 
-        ? '<div style="font-size: 0.75rem; color: var(--cf-gray); margin-top: 0.25rem; font-family: monospace;">' + result.path + '</div>'
-        : '';
-
-    div.innerHTML =
-        '<div class="endpoint-info">' +
-            '<div class="endpoint-path">' +
-                '<span class="endpoint-method">' + method + '</span>' +
-                endpointName +
-            '</div>' +
-            pathInfo +
-            '<div class="endpoint-description">' + description + '</div>' +
-            errorHtml +
-        '</div>' +
-        '<div class="endpoint-status">' +
-            '<span class="status-icon">' + statusIcon + '</span>' +
-            '<div style="text-align: right;">' +
-                '<div class="response-time">' + responseTime.toFixed(0) + 'ms</div>' +
-                statusCodeHtml +
-            '</div>' +
-        '</div>';
-
-    return div;
-}
-
-// Show no data message
-function showNoDataMessage() {
-    const statusBadge = document.getElementById('statusBadge');
-    const totalEndpoints = document.getElementById('totalEndpoints');
-    const healthyEndpoints = document.getElementById('healthyEndpoints');
-    const unhealthyEndpoints = document.getElementById('unhealthyEndpoints');
-    const responseTime = document.getElementById('responseTime');
-    const lastCheck = document.getElementById('lastCheck');
-    const endpointResults = document.getElementById('endpointResults');
-
-    statusBadge.className = 'status-badge';
-    statusBadge.querySelector('.status-text').textContent = 'No Data';
-    totalEndpoints.textContent = '-';
-    healthyEndpoints.textContent = '-';
-    unhealthyEndpoints.textContent = '-';
-    responseTime.textContent = '-';
-    lastCheck.textContent = 'Never';
-    endpointResults.innerHTML = '<p style="text-align: center; color: var(--cf-gray); padding: 2rem;">No health check data available. Click "Run Health Check" to start.</p>';
-}
-
-// Format relative time
 function formatRelativeTime(date) {
-    const now = new Date();
-    const diff = now - date;
-    const seconds = Math.floor(diff / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
+  const diff = Date.now() - date.getTime();
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
 
-    if (days > 0) {
-        return days + ' day' + (days > 1 ? 's' : '') + ' ago';
-    } else if (hours > 0) {
-        return hours + ' hour' + (hours > 1 ? 's' : '') + ' ago';
-    } else if (minutes > 0) {
-        return minutes + ' minute' + (minutes > 1 ? 's' : '') + ' ago';
-    } else {
-        return 'Just now';
-    }
+  if (seconds < 60) return 'just now';
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  if (days === 1) return 'yesterday';
+  return `${days} days ago`;
 }
 
-// Setup MCP tabs
-function setupMCPTabs() {
-    const tabs = document.querySelectorAll('.mcp-tab');
-    const panels = document.querySelectorAll('.mcp-panel');
-    
-    tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const targetTab = tab.dataset.tab;
-            
-            // Update active tab
-            tabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            
-            // Update active panel
-            panels.forEach(p => p.classList.remove('active'));
-            const targetPanel = document.getElementById(`${targetTab}-panel`);
-            if (targetPanel) {
-                targetPanel.classList.add('active');
-            }
-        });
-    });
-}
+function showToast(title, message, isError) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
 
-// Setup copy buttons
-function setupCopyButtons() {
-    const copyButtons = document.querySelectorAll('.copy-btn');
-    
-    copyButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            const codeId = btn.dataset.copy;
-            const codeElement = document.getElementById(codeId);
-            
-            if (codeElement) {
-                // Get the text content, replacing placeholders with actual values
-                let text = codeElement.textContent;
-                const baseUrl = window.location.origin;
-                text = text.replace(/YOUR_CLIENT_AUTH_TOKEN/g, 'YOUR_CLIENT_AUTH_TOKEN');
-                text = text.replace(/https:\/\/core-cloudflare-manager-api\.hacolby\.workers\.dev\/mcp/g, `${baseUrl}/mcp`);
-                
-                // Copy to clipboard
-                navigator.clipboard.writeText(text).then(() => {
-                    // Show feedback
-                    const originalText = btn.textContent;
-                    btn.textContent = 'Copied!';
-                    btn.style.backgroundColor = 'var(--success)';
-                    setTimeout(() => {
-                        btn.textContent = originalText;
-                        btn.style.backgroundColor = '';
-                    }, 2000);
-                }).catch(err => {
-                    console.error('Failed to copy:', err);
-                });
-            }
-        });
-    });
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerHTML = `
+    <div>
+      <strong>${title}</strong>
+      <span>${message}</span>
+    </div>
+    <button aria-label="Dismiss">&times;</button>
+  `;
+
+  if (!isError) {
+    toast.style.borderColor = 'rgba(34, 197, 94, 0.35)';
+  }
+
+  const closeBtn = toast.querySelector('button');
+  closeBtn.addEventListener('click', () => toast.remove());
+
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.remove();
+  }, 10_000);
 }

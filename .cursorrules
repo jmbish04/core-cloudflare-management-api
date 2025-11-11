@@ -1,0 +1,5 @@
+[unit-test-safety]
+description = "Prevent infinite curl loops during local testing"
+enforce_script = "./safe_test.sh"
+applicable_to = ["grok", "qa", "build", "infra", "agent-*"]
+

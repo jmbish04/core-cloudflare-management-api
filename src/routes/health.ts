@@ -299,8 +299,7 @@ healthRoutes.post('/tests/run', async (c) => {
     console.error('Error in /tests/run:', error);
     return c.json({
       success: false,
-      error: error.message,
-      details: error.stack
+      error: error.message || 'Internal server error'
     }, 500);
   }
 });

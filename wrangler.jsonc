@@ -68,6 +68,50 @@
 			"0 */6 * * *",
 			"0 0 * * *"
 		]
+	},
+
+	"env": {
+		"production": {
+			"name": "core-cloudflare-management-api",
+			"vars": {
+				"ENVIRONMENT": "production"
+			},
+			"ai": {
+				"binding": "AI"
+			},
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "core-cloudflare-manager-api",
+					"database_id": "cb8eb377-5687-4c53-8e8d-fddb888e8648",
+					"migrations_dir": "migrations"
+				}
+			],
+			"kv_namespaces": [
+				{
+					"binding": "KV",
+					"id": "a63d362c8c3349eb85ffc68fc4faeb5c",
+					"remote": true
+				}
+			],
+			"analytics_engine_datasets": [
+				{
+					"binding": "OBSERVABILITY_AE"
+				}
+			],
+			"durable_objects": {
+				"bindings": [
+					{
+						"name": "LOG_TAILING_DO",
+						"class_name": "LogTailingDO"
+					},
+					{
+						"name": "CONTEXT_COACH",
+						"class_name": "ContextCoachDO"
+					}
+				]
+			}
+		}
 	}
 
 }

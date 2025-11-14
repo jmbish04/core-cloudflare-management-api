@@ -71,7 +71,7 @@ function inferMethod(action?: string, providedMethod?: 'GET' | 'POST' | 'PUT' | 
 /**
  * Call Cloudflare API dynamically using product name and parameters
  * 
- * @param env - Worker environment with DB and CLOUDFLARE_TOKEN
+ * @param env - Worker environment with DB and CLOUDFLARE_ACCOUNT_TOKEN
  * @param request - Meta API call request with product, method, params, and body
  * @returns Cloudflare API response
  */
@@ -139,7 +139,7 @@ export async function callCloudflareAPI(
 
   // 5. Prepare request options
   const headers: Record<string, string> = {
-    'Authorization': `Bearer ${env.CLOUDFLARE_TOKEN}`,
+    'Authorization': `Bearer ${env.CLOUDFLARE_ACCOUNT_TOKEN}`,
     'Content-Type': 'application/json',
   };
 

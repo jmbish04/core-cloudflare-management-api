@@ -31,8 +31,6 @@
   "license": "MIT",
   "dependencies": {
     "cloudflare": "^3.5.0",
-    "drizzle-kit": "^0.31.6",
-    "drizzle-orm": "^0.44.7",
     "hono": "^4.5.0",
     "kysely": "^0.27.3",
     "kysely-d1": "^0.4.0",

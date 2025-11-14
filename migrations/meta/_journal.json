@@ -57,6 +57,27 @@
       "when": 1762726713200,
       "tag": "0007_add_healing_steps_and_effectiveness",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1762820137057,
+      "tag": "0008_glamorous_cyclops",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1762820274879,
+      "tag": "0009_short_fabian_cortez",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1762820454596,
+      "tag": "0010_powerful_dagger",
+      "breakpoints": true
     }
   ]
 }

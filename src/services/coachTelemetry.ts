@@ -1,6 +1,3 @@
-import { drizzle } from 'drizzle-orm/d1';
-import { desc, sql } from 'drizzle-orm';
-import { coachTelemetry } from '../db/schema';
 import { Env } from '../types';
 
 export interface CoachSuggestion {
@@ -26,11 +23,7 @@ export interface CoachTelemetryRecord {
 }
 
 export class CoachTelemetryService {
-  private db;
-
-  constructor(private env: Env) {
-    this.db = drizzle(env.DB, { schema: { coachTelemetry } });
-  }
+  constructor(private env: Env) {}
 
   async log(record: CoachTelemetryRecord): Promise<void> {
     try {

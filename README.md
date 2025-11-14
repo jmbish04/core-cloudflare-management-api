@@ -320,6 +320,83 @@ core-cloudflare-management-api/
 └── README.md
 ```
 
+## 🗄️ Database Architecture
+
+This project uses **Kysely** as the sole ORM for type-safe database operations with Cloudflare D1 (SQLite).
+
+### Schema Management
+
+- **Current Schema**: `migrations/schema_final.sql` - Complete squashed schema for bootstrapping new databases
+- **Incremental Migrations**: `migrations/0001_*.sql` through `migrations/0016_*.sql` - Historical migration files
+- **Type Safety**: All database types defined in `src/db/client.ts` using Kysely's type system
+
+### Database Tables
+
+- **manage_tokens**: Tracks Cloudflare API tokens with permissions and status
+- **sessions**: Logs every API request/session with metadata
+- **actions_log**: Detailed action-by-action logs within each session
+- **health_tests**: Test definitions for health monitoring
+- **health_test_results**: Results from health check executions (includes legacy health_checks fields)
+- **api_permissions_map**: Maps Cloudflare permissions to API endpoints
+- **coach_telemetry**: AI coach inference tracking and self-tuning
+- **self_healing_attempts**: AI-powered self-healing attempt records
+- **self_healing_steps**: Step-by-step logs of healing processes
+
+### Running Migrations
+
+**For new databases** (bootstrap from scratch):
+```bash
+# Apply the squashed schema
+wrangler d1 execute DB --file=./migrations/schema_final.sql --remote
+
+# Or for local development
+wrangler d1 execute DB --file=./migrations/schema_final.sql --local
+```
+
+**For existing databases** (incremental updates):
+```bash
+# Apply all pending migrations
+npm run db:migrate:remote
+
+# Or for local development
+npm run db:migrate:local
+```
+
+### Database Client Usage
+
+```typescript
+import { initDb } from './db/client';
+import type { Kysely } from 'kysely';
+import type { Database } from './db/client';
+
+// Initialize the database client
+const db: Kysely<Database> = initDb(env);
+
+// Type-safe queries
+const tokens = await db
+  .selectFrom('manage_tokens')
+  .where('status', '=', 'active')
+  .selectAll()
+  .execute();
+
+// Complex joins
+const results = await db
+  .selectFrom('health_test_results')
+  .innerJoin('health_tests', 'health_tests.id', 'health_test_results.health_test_id')
+  .where('health_test_results.outcome', '=', 'fail')
+  .selectAll()
+  .execute();
+```
+
+### Migration History
+
+- **0016**: Merged legacy `health_checks` table into `health_test_results` with backfill
+- **0015**: Added `health_test_result_id` FK to `self_healing_attempts`
+- **0014**: Created `sessions` and `actions_log` tables for comprehensive logging
+- **0013**: Created `manage_tokens` table for token tracking
+- **0011**: Added missing fields to `health_tests` (consolidated with unit test definitions)
+- **0010**: Added `verbs` column to `api_permissions_map`
+
 ## 🛠️ Development
 
 ### Cloudflare API Schemas

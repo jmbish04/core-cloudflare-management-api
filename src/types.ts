@@ -1,11 +1,14 @@
 import Cloudflare from 'cloudflare';
 import { CloudflareApiClient } from './routes/api/apiClient';
+import { LoggingService } from './services/logging';
 
 // Environment bindings
 export interface Env {
   // Secret Store Bindings
   CLOUDFLARE_ACCOUNT_ID: string; // Cloudflare Account ID
-  CLOUDFLARE_TOKEN: string; // Worker's own Cloudflare API token
+  CLOUDFLARE_ACCOUNT_TOKEN: string; // Account-scoped API token (preferred for most operations)
+  CLOUDFLARE_USER_TOKEN: string; // User-scoped API token (for user-level operations like listing tokens)
+  CLOUDFLARE_GLOBAL_ADMIN_TOKEN?: string; // Global admin token with full permissions (for self-healing other tokens)
   CLIENT_AUTH_TOKEN: string; // Auth token for incoming requests
   MANAGED_SECRETS_STORE: string; // Secret Store ID for managed token storage
 
@@ -34,6 +37,7 @@ export interface Variables {
   startTime: number;
   requestId: string;
   apiClient?: CloudflareApiClient;
+  loggingService?: LoggingService;
 }
 
 // Managed Token Record
@@ -93,4 +97,29 @@ export function calculateExpiresAt(ttlDays?: number): string | undefined {
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + ttlDays);
   return expiresAt.toISOString();
+}
+
+/**
+ * Get the appropriate Cloudflare API token based on the operation type
+ * @param env - Environment bindings
+ * @param preferUserToken - If true, prefer user token for user-level operations
+ * @returns The appropriate API token
+ */
+export function getCloudflareToken(env: Env, preferUserToken: boolean = false): string {
+  // If user token is explicitly requested and available, use it
+  if (preferUserToken && env.CLOUDFLARE_USER_TOKEN) {
+    return env.CLOUDFLARE_USER_TOKEN;
+  }
+  
+  // Prefer account token over legacy token
+  if (env.CLOUDFLARE_ACCOUNT_TOKEN) {
+    return env.CLOUDFLARE_ACCOUNT_TOKEN;
+  }
+  
+  // Fall back to legacy token for backward compatibility
+  if (env.CLOUDFLARE_ACCOUNT_TOKEN) {
+    return env.CLOUDFLARE_ACCOUNT_TOKEN;
+  }
+  
+  throw new Error('No Cloudflare API token configured. Please set CLOUDFLARE_ACCOUNT_TOKEN or CLOUDFLARE_USER_TOKEN.');
 }

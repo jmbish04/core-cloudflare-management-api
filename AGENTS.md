@@ -50,7 +50,7 @@ For Development Agents
 	•	Agents must write automated tests (unit + integration) corresponding to any added functionality before merging.
 	•	Agents must adhere to code style guidelines (linting, formatting) as defined (e.g., .eslintrc, go fmt, etc).
 	•	Agents should reason about backwards compatibility: any breaking changes must bump major version or provide migration notes.
-	•	**Cloudflare API Reference**: When working with Cloudflare API integrations, agents MUST consult the OpenAPI schema located at `/Volumes/Projects/workers/core-cloudflare-management-api/api-schemas-main/common.yaml` for accurate endpoint definitions, request/response formats, and authentication requirements.
+	•	**Cloudflare API Reference**: When working with Cloudflare API integrations, agents MUST consult the OpenAPI schema located at `api-schemas-main/common.yaml` for accurate endpoint definitions, request/response formats, and authentication requirements.
 
 For Maintenance Agents
 	•	Agents handling dependency upgrades must run a full test suite (via ./safe_test.sh) before merging.

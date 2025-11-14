@@ -1,6 +1,6 @@
 # Cloudflare API Schema Reference
 
-**Location**: `/Volumes/Projects/workers/core-cloudflare-management-api/api-schemas-main/common.yaml`
+**Location**: `api-schemas-main/common.yaml`
 
 ---
 

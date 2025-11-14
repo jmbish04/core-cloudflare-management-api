@@ -56,10 +56,14 @@ def get_open_pr():
         if "github.com" in remote_url:
             if remote_url.startswith("https://"):
                 # https://github.com/owner/repo.git
-                repo_part = remote_url.split("github.com/")[1].rstrip(".git")
+                repo_part = remote_url.split("github.com/")[1]
             else:
                 # git@github.com:owner/repo.git
-                repo_part = remote_url.split("github.com:")[1].rstrip(".git")
+                repo_part = remote_url.split("github.com:")[1]
+
+            # Remove .git extension more safely
+            if repo_part.endswith(".git"):
+                repo_part = repo_part[:-4]  # Remove last 4 characters (.git)
 
             owner, repo = repo_part.split("/")
         else:

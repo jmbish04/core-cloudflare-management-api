@@ -1,0 +1,45 @@
+---
+description: Use OpenAPI schema for Cloudflare API integrations
+globs: ["*.ts", "*.js"]
+alwaysApply: true
+---
+
+# Cloudflare API Schema Reference
+
+When implementing or testing Cloudflare API endpoints, **agents MUST consult** the OpenAPI schema for accurate specifications.
+
+## Schema Location
+
+**Path:** `api-schemas-main/common.yaml`
+
+**Source:** Official Cloudflare API schemas (https://github.com/cloudflare/api-schemas)
+
+## When to Use
+
+- ✅ Implementing new Cloudflare API integrations
+- ✅ Validating API endpoint paths and parameters
+- ✅ Understanding request/response formats
+- ✅ Checking authentication requirements
+- ✅ Looking up permission group names and IDs
+- ✅ Debugging API integration issues
+
+## Best Practices
+
+- **Always consult the schema** before implementing new API calls
+- **Use the schema** to validate request/response structures in tests
+- **Reference the schema** when documenting API integrations
+- **Keep the schema up-to-date** by syncing with the official repository
+
+## Example Usage
+
+- **Finding permission groups:** Search for "permission_groups" in common.yaml
+- **Checking endpoint paths:** Look under the "paths" section
+- **Understanding authentication:** Review the "securitySchemes" section
+- **Validating request bodies:** Check the "requestBody" schema for each endpoint
+
+## Applicable Agents
+
+- development
+- testing
+- integration
+- agent-*

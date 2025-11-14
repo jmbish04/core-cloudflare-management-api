@@ -1,5 +1,11 @@
-[unit-test-safety]
-description = "Prevent infinite curl loops during local testing"
-enforce_script = "./safe_test.sh"
-applicable_to = ["grok", "qa", "build", "infra", "agent-*"]
+# LEGACY: This file has been migrated to .cursor/rules/ directory
+# See .cursor/rules/ for the new project rules in MDC format
+# This legacy format will be deprecated - please use the new rules instead
+
+# Migrated rules:
+# - unit-test-safety.mdc
+# - cloudflare-api-reference.mdc
+# - agent-workflow.mdc
+# - typescript-development.mdc
+# - database-migrations.mdc
 

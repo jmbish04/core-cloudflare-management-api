@@ -1,0 +1,65 @@
+---
+description: Agent development and workflow guidelines
+alwaysApply: true
+---
+
+# Agent Development Guidelines
+
+This project follows comprehensive agent guidelines defined in `AGENTS.md`. All agents must adhere to these standards.
+
+## Core Requirements
+
+### For All Agents
+1. **Clear Identity**: Agents must operate under a clear name and role for traceability
+2. **Quality Commits**: Self-contained commits with descriptive messages
+3. **Issue Tracking**: Reference relevant tickets/issues where applicable
+4. **Branch Strategy**: Respect repo branching (main for production, develop for integration, feature branches)
+5. **Documentation**: Write documented code, include tests, update README/docs as needed
+
+### Agent Roles
+
+#### Testing Agents
+- **MANDATORY**: Use `./safe_test.sh` instead of direct curl calls
+- Include happy-path and edge-path tests
+- Generate machine-parsable JSON output
+- Maintain coverage thresholds
+- Register new integration tests in manifest
+
+#### Development Agents
+- Document new API endpoints in `docs/` directory
+- Include versioning/changelog updates for API changes
+- Write automated tests before merging
+- Adhere to code style guidelines
+- Consider backwards compatibility
+
+#### Maintenance Agents
+- Run full test suite before dependency upgrades
+- Update documentation for security fixes
+- Verify monitoring/logging after changes
+
+## Workflow Process
+
+1. **Identify Task**: Create dedicated branch (e.g., `agent-qa/issue-1234`)
+2. **Develop**: Follow role-specific guidelines, use `./safe_test.sh` for testing agents
+3. **Test Locally**: Run all tests locally
+4. **Create PR**: Push branch and create pull request
+5. **Review**: Ensure compliance with guidelines
+6. **Merge**: Into develop, then main when release-ready
+7. **Cleanup**: Close issues, update CHANGELOG if needed
+
+## CI/CD Integration
+
+- CI must call `./safe_test.sh` as test entry point
+- Direct curl calls must be replaced or justified
+- CI must enforce linting/formatting checks
+- Capture test results and coverage metrics
+
+## Escalation
+
+- Document exceptions in PR description with `@agent-exception` label
+- Exceptions require human maintainer approval
+- Persistent exceptions trigger agent behavior review
+
+## Reference
+
+See `AGENTS.md` for complete agent guidelines and Cloudflare API schema usage.

@@ -10,7 +10,10 @@ MAX_TIME=20
 
 echo "Running safe test on $URL (max ${MAX_TIME}s)..."
 
-curl --connect-timeout $CONNECT_TIMEOUT --max-time $MAX_TIME -sf "$URL" \
-  | jq '.result[0]' 2>/dev/null \
-  || echo "⚠️ No response within ${MAX_TIME}s or invalid JSON"
+output=$(curl --connect-timeout $CONNECT_TIMEOUT --max-time $MAX_TIME -sf "$URL")
+if [ $? -ne 0 ] || ! echo "$output" | jq -e '.result[0]' > /dev/null; then
+    echo "⚠️ No response within ${MAX_TIME}s or invalid JSON / missing .result[0]" >&2
+    exit 1
+fi
+echo "$output" | jq '.result[0]'
 

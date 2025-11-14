@@ -2,16 +2,18 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import Cloudflare from 'cloudflare';
-import { Env, Variables, generateUUID } from './types';
+import { Env, Variables, generateUUID, getCloudflareToken } from './types';
 import apiRouter from './routes/api/index';
 import flowsRouter from './routes/flows/index';
 import healthRouter from './routes/health';
+import tokenRoutes from './routes/tokens';
 import { CloudflareApiClient } from './routes/api/apiClient';
 
 // Import services
 import { HealthCheckService } from './services/health-check';
-import { UnitTestService } from './services/unit-tests';
 import { autoTuneThreshold } from './services/coachTelemetry';
+import { LoggingService } from './services/logging';
+import { TokenManagerService } from './services/token-manager';
 
 // Export Durable Objects
 export { LogTailingDO } from './logTailingDO';
@@ -25,6 +27,13 @@ const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 // CORS middleware
 app.use('*', cors());
+
+// Logging middleware - must come before auth to capture all requests
+app.use('*', async (c, next) => {
+  const loggingService = new LoggingService(c.env);
+  const loggingMiddleware = loggingService.createLoggingMiddleware();
+  return loggingMiddleware(c, next);
+});
 
 /**
  * Authentication Middleware
@@ -49,17 +58,11 @@ const authMiddleware = async (c: any, next: any) => {
 
 /**
  * Cloudflare SDK Initialization Middleware
- * Initializes SDK with worker's own CLOUDFLARE_TOKEN
+ * Initializes SDK with worker's Cloudflare API token
  */
 const cfInitMiddleware = async (c: any, next: any) => {
-  // Temporarily log the types of all secrets to debug the binding issue
-  // console.log('--- Secret Binding Types ---');
-  // console.log('typeof c.env.CLOUDFLARE_ACCOUNT_ID:', typeof c.env.CLOUDFLARE_ACCOUNT_ID);
-  // console.log('typeof c.env.CLOUDFLARE_TOKEN:', typeof c.env.CLOUDFLARE_TOKEN);
-  // console.log('typeof c.env.CLIENT_AUTH_TOKEN:', typeof c.env.CLIENT_AUTH_TOKEN);
-  // console.log('--------------------------');
-
-  const cf = new Cloudflare({ apiToken: c.env.CLOUDFLARE_TOKEN });
+  // Use the token helper to get the appropriate token
+  const cf = new Cloudflare({ apiToken: getCloudflareToken(c.env) });
 
   // Extract account ID from environment
   const accountId = c.env.CLOUDFLARE_ACCOUNT_ID;
@@ -73,17 +76,19 @@ const cfInitMiddleware = async (c: any, next: any) => {
 };
 
 const apiClientMiddleware = async (c: any, next: any) => {
-  const apiToken = c.env.CLOUDFLARE_TOKEN;
-  if (!apiToken) {
-    return c.json({ success: false, error: 'CLOUDFLARE_TOKEN is not configured' }, 500);
-  }
+  try {
+    const apiToken = getCloudflareToken(c.env);
+    
+    if (!c.get('apiClient')) {
+      const loggingService = c.get('loggingService');
+      const apiClient = new CloudflareApiClient({ apiToken }, undefined, loggingService);
+      c.set('apiClient', apiClient);
+    }
 
-  if (!c.get('apiClient')) {
-    const apiClient = new CloudflareApiClient({ apiToken });
-    c.set('apiClient', apiClient);
+    await next();
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message || 'Failed to initialize API client' }, 500);
   }
-
-  await next();
 };
 
 // Health check (no auth required)
@@ -106,6 +111,7 @@ app.use('/agent', authMiddleware, cfInitMiddleware);
 app.route('/api', apiRouter);
 app.route('/flows', flowsRouter);
 app.route('/health', healthRouter);
+app.route('/tokens', tokenRoutes);
 
 // Serve OpenAPI endpoints at root level
 app.get('/openapi.json', async (c) => {
@@ -140,7 +146,7 @@ app.get('/health.html', async (c) => {
       method: c.req.method,
       headers: Object.fromEntries(c.req.raw.headers.entries()),
     };
-    const response = await c.env.ASSETS.fetch(new Request(`${url.origin}/health.html`, requestInit));
+    const response = await c.env.ASSETS.fetch(new Request(`${url.origin}/health-dashboard.html`, requestInit));
     return response;
   } catch (error) {
     return c.html('<h1>Health Dashboard</h1><p>Health dashboard not found</p>');
@@ -375,7 +381,7 @@ export const scheduled = async (
   ctx: ExecutionContext
 ) => {
   try {
-    const cf = new Cloudflare({ apiToken: env.CLOUDFLARE_TOKEN });
+    const cf = new Cloudflare({ apiToken: env.CLOUDFLARE_ACCOUNT_TOKEN });
     const db = env.DB;
     const accountId = env.CLOUDFLARE_ACCOUNT_ID;
     const now = new Date().toISOString();
@@ -388,6 +394,47 @@ export const scheduled = async (
         autoTuneThreshold(env).catch((err) => {
           console.error('Auto-tune threshold failed:', err);
         })
+      );
+    }
+
+    // Task 0.5: Token health check and auto-heal (runs every 6 hours)
+    if (controller.cron === '0 */6 * * *' || controller.cron === '0 0 * * *') {
+      console.log('Running token health check and auto-heal...');
+      ctx.waitUntil(
+        (async () => {
+          try {
+            const tokenManager = new TokenManagerService(env);
+            const report = await tokenManager.checkTokenHealth(true);
+            
+            console.log(`Token health check completed. Overall: ${report.overall_health}`);
+            console.log(`Account token: ${report.account_token.is_valid ? '✅' : '❌'} valid, ${report.account_token.has_all_permissions ? '✅' : '⚠️'} all permissions`);
+            console.log(`User token: ${report.user_token.is_valid ? '✅' : '❌'} valid, ${report.user_token.has_all_permissions ? '✅' : '⚠️'} all permissions`);
+            
+            if (report.auto_heal_results) {
+              if (report.auto_heal_results.account_token) {
+                const result = report.auto_heal_results.account_token;
+                console.log(`Account token heal: ${result.success ? '✅' : '❌'} ${result.message}`);
+                if (result.permissions_added.length > 0) {
+                  console.log(`  Added permissions: ${result.permissions_added.join(', ')}`);
+                }
+              }
+              if (report.auto_heal_results.user_token) {
+                const result = report.auto_heal_results.user_token;
+                console.log(`User token heal: ${result.success ? '✅' : '❌'} ${result.message}`);
+                if (result.permissions_added.length > 0) {
+                  console.log(`  Added permissions: ${result.permissions_added.join(', ')}`);
+                }
+              }
+            }
+            
+            if (report.recommendations.length > 0) {
+              console.log('Recommendations:');
+              report.recommendations.forEach((rec) => console.log(`  ${rec}`));
+            }
+          } catch (tokenError: any) {
+            console.error('Token health check failed:', tokenError);
+          }
+        })()
       );
     }
 
@@ -426,47 +473,63 @@ export const scheduled = async (
       }
       console.log(`TTL cleanup completed. Processed ${expiredTokens.results?.length || 0} expired tokens.`);
 
-      const unitTestService = new UnitTestService(env);
-      const baseUrl = env.BASE_URL || 'https://scheduled.core-worker.internal';
-      const internalFetch = (request: Request) => {
-        const url = new URL(request.url, baseUrl);
-        const absoluteRequest = new Request(url.toString(), request);
-        return Promise.resolve(app.fetch(absoluteRequest, env, ctx));
-      };
-
-      ctx.waitUntil(
-        unitTestService
-          .runUnitTests('cron:0 */6 * * *', {
-            env,
-            baseUrl,
-            authToken: env.CLIENT_AUTH_TOKEN,
-            internalFetch,
-          })
-          .then((summary) => {
-            console.log(
-              `Unit tests session ${summary.sessionUuid} finished: ${summary.passedTests}/${summary.totalTests} passed in ${summary.durationMs} ms`
-            );
-          })
-          .catch((err) => {
-            console.error('Scheduled unit tests failed:', err);
-          })
-      );
+      // Unit tests have been consolidated into health checks
+      console.log('Scheduled health checks completed (unit tests now part of health monitoring)');
     }
 
-    // Task 2: Run daily health check
+    // Task 2: Run daily health check with auto-healing
     if (controller.cron === '0 0 * * *') {
-      console.log('Running daily health check...');
+      console.log('Running daily health check with auto-healing...');
+      const loggingService = new LoggingService(env);
       try {
         // BASE_URL should be set in wrangler.jsonc [vars] for production
         const baseUrl = env.BASE_URL || `https://core-cloudflare-management-api.hacolby.workers.dev`;
-        const healthService = new HealthCheckService(env, baseUrl, env.CLIENT_AUTH_TOKEN);
+        await loggingService.startSession({ requestType: 'cron', requestPath: 'scheduled:0 0 * * *' });
+        const healthService = new HealthCheckService(env, baseUrl, env.CLIENT_AUTH_TOKEN, undefined, loggingService);
 
         const healthResult = await healthService.runHealthCheck();
         await healthService.saveHealthCheck(healthResult);
 
         console.log(`Daily health check completed. Status: ${healthResult.overall_status}, Healthy: ${healthResult.healthy_endpoints}/${healthResult.total_endpoints}`);
-      } catch (healthError) {
+        
+        // Trigger self-healing if there are failures
+        if (healthResult.unhealthy_endpoints > 0) {
+          console.log(`Triggering self-healing for ${healthResult.unhealthy_endpoints} failed endpoints...`);
+          try {
+            const { SelfHealingService } = await import('./services/self-healing');
+            const healingService = new SelfHealingService(env, env.CLOUDFLARE_ACCOUNT_ID || '');
+            
+            // Get failed tests
+            const failedResults = await healthService.getTestResultsWithDefinitions(healthResult.check_group_id);
+            const failedTests = failedResults
+              .filter((r: any) => r.outcome === 'fail')
+              .map((r: any) => ({
+                test_result_id: r.id,
+                test_id: r.health_test_id,
+                test_name: r.health_test?.name || 'Unknown',
+                endpoint_path: r.health_test?.endpoint_path || '',
+                http_method: r.health_test?.http_method || 'GET',
+                status: r.status,
+                status_text: r.status_text,
+                error_message: r.error_message,
+                response_body: r.response_body,
+              }));
+
+            if (failedTests.length > 0) {
+              const healingResults = await healingService.analyzeAndHeal(healthResult.check_group_id, failedTests);
+              const successfulHeals = healingResults.filter((r: any) => r.status === 'success').length;
+              console.log(`Self-healing completed: ${successfulHeals}/${failedTests.length} tests healed successfully`);
+            }
+          } catch (healError: any) {
+            console.error('Self-healing failed:', healError);
+            // Don't fail the health check if healing fails
+          }
+        }
+        
+        await loggingService.endSession(200);
+      } catch (healthError: any) {
         console.error('Failed to run daily health check:', healthError);
+        await loggingService.endSession(500, 0, healthError.message);
       }
     }
   } catch (error) {
@@ -559,6 +622,42 @@ app.get('/ws', async (c) => {
     status: 101,
     webSocket: client,
   });
+});
+
+// Handle 404 for unknown API endpoints
+app.notFound((c) => {
+  const path = new URL(c.req.url).pathname;
+  
+  // If it's an API request, return JSON 404
+  if (path.startsWith('/api/')) {
+    return c.json({
+      success: false,
+      error: 'Endpoint not found',
+      path: path,
+      message: 'This API endpoint does not exist. Check the OpenAPI documentation at /health/openapi.json'
+    }, 404);
+  }
+  
+  // For other paths, return HTML 404
+  return c.html(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>404 - Not Found</title>
+        <style>
+          body { font-family: system-ui; max-width: 600px; margin: 100px auto; padding: 20px; text-align: center; }
+          h1 { color: #4f46e5; }
+          a { color: #4f46e5; text-decoration: none; }
+          a:hover { text-decoration: underline; }
+        </style>
+      </head>
+      <body>
+        <h1>404 - Page Not Found</h1>
+        <p>The page <code>${path}</code> does not exist.</p>
+        <p><a href="/">← Back to Home</a></p>
+      </body>
+    </html>
+  `, 404);
 });
 
 export default app;

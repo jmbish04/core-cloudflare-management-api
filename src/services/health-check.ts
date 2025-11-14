@@ -1,5 +1,8 @@
-import { Env, Variables, generateUUID } from '../types';
-import { initDb, type DbClients } from '../db/client';
+import { Env, Variables, generateUUID, getCloudflareToken } from '../types';
+import { initDb } from '../db/client';
+import type { Kysely } from 'kysely';
+import type { Database } from '../db/client';
+import { LoggingService } from './logging';
 
 export interface HealthCheckResult {
   overall_status: 'pass' | 'fail' | 'degraded';
@@ -26,17 +29,19 @@ export interface EndpointResult {
 
 export class HealthCheckService {
   private env: Env;
-  private db: DbClients;
+  private db: Kysely<Database>;
   private baseUrl: string;
   private authToken: string;
   private appFetch?: (request: Request) => Promise<Response>;
+  private loggingService?: LoggingService;
 
-  constructor(env: Env, baseUrl: string, authToken: string, appFetch?: (request: Request) => Promise<Response>) {
+  constructor(env: Env, baseUrl: string, authToken: string, appFetch?: (request: Request) => Promise<Response>, loggingService?: LoggingService) {
     this.env = env;
     this.db = initDb(env);
     this.baseUrl = baseUrl;
     this.authToken = authToken;
     this.appFetch = appFetch; // Optional: allows internal routing instead of HTTP requests
+    this.loggingService = loggingService;
   }
 
   /**
@@ -171,6 +176,22 @@ export class HealthCheckService {
         category: 'meta',
         description: 'Tests OpenAPI specification endpoint',
       },
+
+      // Database Health & Sync Tests
+      {
+        name: 'Token Table Sync',
+        endpoint_path: '/health/db/tokens',
+        http_method: 'POST',
+        category: 'health',
+        description: 'Syncs manage_tokens table with Cloudflare API and validates data integrity',
+      },
+      {
+        name: 'API Permissions Map Sync',
+        endpoint_path: '/health/db/permissions',
+        http_method: 'POST',
+        category: 'health',
+        description: 'Syncs api_permissions_map table with current token permissions and validates consistency',
+      },
     ];
   }
 
@@ -183,7 +204,7 @@ export class HealthCheckService {
 
     for (const testDef of defaultTests) {
       // Check if test already exists
-      const existing = await this.db.kysely
+      const existing = await this.db
         .selectFrom('health_tests')
         .where('endpoint_path', '=', testDef.endpoint_path)
         .selectAll()
@@ -192,25 +213,31 @@ export class HealthCheckService {
 
       if (!existing) {
         // Register new test
-        await this.db.kysely
+        await this.db
           .insertInto('health_tests')
           .values({
             id: generateUUID(),
+            test_key: testDef.endpoint_path.replace(/\//g, '_').replace(/^_/, ''),
             name: testDef.name,
+            scope: 'internal',
             endpoint_path: testDef.endpoint_path,
             http_method: testDef.http_method,
             category: testDef.category,
             description: testDef.description,
+            executor_key: 'http',
+            error_meanings_json: null,
+            error_solutions_json: null,
+            metadata: null,
             request_body: testDef.request_body || null,
-            enabled: true,
-            is_active: true,
+            enabled: 1,
+            is_active: 1,
             created_at: now,
             updated_at: now,
           })
           .execute();
       } else if (existing.description !== testDef.description || existing.http_method !== testDef.http_method) {
         // Update existing test if definition changed
-        await this.db.kysely
+        await this.db
           .updateTable('health_tests')
           .set({
             name: testDef.name,
@@ -238,10 +265,10 @@ export class HealthCheckService {
     description: string | null;
     request_body: string | null;
   }>> {
-    const result = await this.db.kysely
+    const result = await this.db
       .selectFrom('health_tests')
-      .where('enabled', '=', true)
-      .where('is_active', '=', true)
+      .where('enabled', '=', 1)
+      .where('is_active', '=', 1)
       .select(['id', 'name', 'endpoint_path', 'http_method', 'category', 'description', 'request_body'])
       .execute();
     return result;
@@ -257,9 +284,9 @@ export class HealthCheckService {
       await this.ensureTestsRegistered();
 
       // Get all active tests using Kysely
-      const tests = await this.db.kysely
+      const tests = await this.db
         .selectFrom('health_tests')
-        .where('is_active', '=', true)
+        .where('is_active', '=', 1)
         .orderBy('name')
         .selectAll()
         .execute();
@@ -268,7 +295,7 @@ export class HealthCheckService {
       const testsWithResults = await Promise.all(
         tests.map(async (test) => {
           try {
-            const latestResult = await this.db.kysely
+            const latestResult = await this.db
               .selectFrom('health_test_results')
               .where('health_test_id', '=', test.id)
               .orderBy('run_at', 'desc')
@@ -351,14 +378,51 @@ export class HealthCheckService {
       let responseBody: string | null = null;
       
       try {
-        // Determine the target URL
-        // For /api/* endpoints, call the Worker's own API (which proxies to Cloudflare)
-        // For /health/* endpoints, call the Worker's health endpoints
-        // For other endpoints, use as-is
-        let url: string;
-        let authHeader: string;
-        
-        if (test.endpoint_path.startsWith('/api/')) {
+        // Special handling for database sync tests
+        if (test.endpoint_path === '/health/db/tokens') {
+          // Token table sync test
+          try {
+            await this.syncTokensFromApiResponse(null); // Force sync even without new data
+            status = 200;
+            statusText = 'Token table sync completed successfully';
+            outcome = 'pass';
+            responseBody = JSON.stringify({ success: true, message: 'Token sync completed' });
+          } catch (syncError: any) {
+            status = 500;
+            statusText = `Token sync failed: ${syncError.message}`;
+            outcome = 'fail';
+            responseBody = JSON.stringify({ success: false, error: syncError.message });
+          }
+        } else if (test.endpoint_path === '/health/db/permissions') {
+          // API permissions map sync test
+          try {
+            const syncResult = await this.syncPermissionsMap();
+            if (syncResult.success) {
+              status = 200;
+              statusText = syncResult.message;
+              outcome = 'pass';
+              responseBody = JSON.stringify(syncResult);
+            } else {
+              status = 500;
+              statusText = syncResult.message;
+              outcome = 'fail';
+              responseBody = JSON.stringify(syncResult);
+            }
+          } catch (syncError: any) {
+            status = 500;
+            statusText = `Permissions sync failed: ${syncError.message}`;
+            outcome = 'fail';
+            responseBody = JSON.stringify({ success: false, error: syncError.message });
+          }
+        } else {
+          // Determine the target URL
+          // For /api/* endpoints, call the Worker's own API (which proxies to Cloudflare)
+          // For /health/* endpoints, call the Worker's health endpoints
+          // For other endpoints, use as-is
+          let url: string;
+          let authHeader: string;
+
+          if (test.endpoint_path.startsWith('/api/')) {
           // Call Worker's own API endpoints (they proxy to Cloudflare)
           url = `${this.baseUrl}${test.endpoint_path}`;
           authHeader = `Bearer ${this.authToken}`; // Use CLIENT_AUTH_TOKEN for Worker API
@@ -372,7 +436,7 @@ export class HealthCheckService {
           const cloudflarePath = test.endpoint_path.replace('/api', '');
           url = `https://api.cloudflare.com/client/v4${cloudflarePath}`;
           // Use Cloudflare API token from environment
-          authHeader = `Bearer ${this.env.CLOUDFLARE_TOKEN}`;
+          authHeader = `Bearer ${this.env.CLOUDFLARE_ACCOUNT_TOKEN}`;
         }
         
         const method = test.http_method;
@@ -430,10 +494,21 @@ export class HealthCheckService {
                 // Not JSON, use text
                 statusText = `${response.statusText}: ${bodyText.substring(0, 100)}`;
               }
+            } else if (response.ok && test.endpoint_path === '/api/tokens') {
+              // Special handling for tokens API - sync tokens to database
+              try {
+                const responseJson = JSON.parse(bodyText);
+                if (responseJson.success !== false) { // Only sync on successful responses
+                  await this.syncTokensFromApiResponse(responseJson);
+                }
+              } catch (parseError) {
+                console.error('Failed to parse tokens response for sync:', parseError);
+              }
             }
           }
         } catch {
           // Ignore errors reading response body
+        }
         }
       } catch (e: any) {
         status = 0;
@@ -447,7 +522,7 @@ export class HealthCheckService {
       // Store result in database using Kysely
       const resultId = generateUUID();
       try {
-        await this.db.kysely
+        await this.db
           .insertInto('health_test_results')
           .values({
             id: resultId,
@@ -460,6 +535,8 @@ export class HealthCheckService {
             error_message: outcome === 'fail' ? statusText : null,
             response_body: responseBody,
             run_at: new Date().toISOString(),
+            endpoint: test.name,
+            overall_status: null,
           })
           .execute();
       } catch (dbError: any) {
@@ -502,35 +579,10 @@ export class HealthCheckService {
   }
 
   public async saveHealthCheck(result: HealthCheckResult): Promise<void> {
-    // This method saves to the legacy health_checks table for backward compatibility
-    // The main results are already saved to health_test_results in runHealthCheck()
-    // Use raw SQL to avoid Drizzle batch insert issues with D1
-    
-    // Insert records one at a time using raw SQL to avoid parameter limit issues
-    for (const res of result.results) {
-      try {
-        const id = generateUUID();
-        await this.env.DB.prepare(
-          `INSERT INTO health_checks (id, endpoint, status, status_text, response_time_ms, run_at, check_group_id, overall_status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(
-          id,
-          res.endpoint,
-          res.status,
-          res.statusText,
-          res.response_time_ms,
-          result.checked_at,
-          result.check_group_id,
-          result.overall_status
-        ).run();
-      } catch (error: any) {
-        // Log but don't throw - legacy table is for backward compatibility only
-        console.error('Failed to insert record to legacy health_checks table:', {
-          endpoint: res.endpoint,
-          error: error.message,
-        });
-      }
-    }
+    // Legacy method - no longer writes to health_checks table (removed in migration 0016)
+    // All data is now stored in health_test_results during runHealthCheck()
+    // This method is kept for backward compatibility but is now a no-op
+    console.log('saveHealthCheck called (no-op): health_checks table removed, data in health_test_results');
   }
 
   /**
@@ -556,7 +608,7 @@ export class HealthCheckService {
    * Get test results with test definitions joined
    */
   public async getTestResultsWithDefinitions(runGroupId?: string, limit: number = 100): Promise<any[]> {
-    let query = this.db.kysely
+    let query = this.db
       .selectFrom('health_test_results')
       .innerJoin('health_tests', 'health_tests.id', 'health_test_results.health_test_id')
       .select([
@@ -607,9 +659,284 @@ export class HealthCheckService {
     }));
   }
 
+  /**
+   * Sync API permissions map from manage_tokens table
+   */
+  public async syncPermissionsMap(): Promise<{ success: boolean; message: string; permissionsCount: number }> {
+    try {
+      // Get all active tokens with their permissions
+      const tokens = await this.db
+        .selectFrom('manage_tokens')
+        .where('status', '=', 'active')
+        .select(['permissions'])
+        .execute();
+
+      // Extract all unique permissions
+      const permissionsSet = new Set<string>();
+      for (const token of tokens) {
+        if (token.permissions) {
+          try {
+            const permissions = JSON.parse(token.permissions);
+            if (Array.isArray(permissions)) {
+              permissions.forEach((perm: string) => permissionsSet.add(perm));
+            }
+          } catch (error) {
+            console.error('Failed to parse token permissions:', token.permissions, error);
+          }
+        }
+      }
+
+      // Get existing permissions map
+      const existingMap = await this.db
+        .selectFrom('api_permissions_map')
+        .selectAll()
+        .execute();
+
+      // Create maps for easy lookup
+      const existingPermissionsMap = new Map(existingMap.map(p => [p.permission, p]));
+      const newPermissions = Array.from(permissionsSet);
+
+      let added = 0;
+      let removed = 0;
+
+      // Add new permissions
+      for (const permission of newPermissions) {
+        if (!existingPermissionsMap.has(permission)) {
+          // Try to extract base path from permission
+          const basePath = this.extractBasePathFromPermission(permission);
+          const description = this.generatePermissionDescription(permission);
+
+          await this.db
+            .insertInto('api_permissions_map')
+            .values({
+              permission,
+              base_path: basePath,
+              verbs: null,
+              description,
+            })
+            .execute();
+          added++;
+        }
+      }
+
+      // Remove permissions that no longer exist in any token
+      for (const existing of existingMap) {
+        if (!newPermissions.includes(existing.permission)) {
+          await this.db
+            .deleteFrom('api_permissions_map')
+            .where('permission', '=', existing.permission)
+            .execute();
+          removed++;
+        }
+      }
+
+      const message = `Permissions map synced: ${added} added, ${removed} removed, ${newPermissions.length} total permissions`;
+      console.log(message);
+
+      await this.loggingService?.logAction({
+        actionType: 'database_sync',
+        actionName: 'Permissions map sync completed',
+        outputData: { added, removed, total: newPermissions.length },
+        status: 'completed',
+      });
+
+      return {
+        success: true,
+        message,
+        permissionsCount: newPermissions.length,
+      };
+    } catch (error: any) {
+      const message = `Failed to sync permissions map: ${error.message}`;
+      console.error(message, error);
+
+      await this.loggingService?.logAction({
+        actionType: 'database_sync',
+        actionName: 'Permissions map sync failed',
+        errorMessage: error.message,
+        status: 'failed',
+      });
+
+      return {
+        success: false,
+        message,
+        permissionsCount: 0,
+      };
+    }
+  }
+
+  /**
+   * Extract base path from Cloudflare permission string
+   */
+  private extractBasePathFromPermission(permission: string): string {
+    // Cloudflare permission format: "Resource:Action" or "Resource Subresource:Action"
+    const parts = permission.split(':');
+    if (parts.length < 2) return '/';
+
+    const resource = parts[0];
+    const action = parts[1];
+
+    // Map common Cloudflare resources to API paths
+    const resourceMap: Record<string, string> = {
+      'Workers Scripts': '/accounts/{account_id}/workers/scripts',
+      'Workers': '/accounts/{account_id}/workers',
+      'D1': '/accounts/{account_id}/d1',
+      'KV': '/accounts/{account_id}/storage/kv',
+      'R2': '/accounts/{account_id}/r2',
+      'Vectorize': '/accounts/{account_id}/vectorize',
+      'Workers AI': '/accounts/{account_id}/ai',
+      'Pages': '/accounts/{account_id}/pages',
+      'User Tokens': '/user/tokens',
+      'Account Tokens': '/accounts/{account_id}/tokens',
+    };
+
+    return resourceMap[resource] || `/${resource.toLowerCase().replace(/\s+/g, '/')}`;
+  }
+
+  /**
+   * Generate description for permission
+   */
+  private generatePermissionDescription(permission: string): string {
+    const parts = permission.split(':');
+    if (parts.length < 2) return `Permission: ${permission}`;
+
+    const resource = parts[0];
+    const action = parts[1];
+
+    return `Allows ${action.toLowerCase()} operations on ${resource}`;
+  }
+
+  /**
+   * Sync tokens from Cloudflare API response to manage_tokens table
+   * If apiTokensResponse is null, just update last_verified timestamps
+   */
+  public async syncTokensFromApiResponse(apiTokensResponse: any): Promise<void> {
+    try {
+      const now = new Date().toISOString();
+
+      // If no API response provided, just update verification timestamps and return
+      if (!apiTokensResponse) {
+        await this.loggingService?.logAction({
+          actionType: 'database_sync',
+          actionName: 'Token verification timestamps updated',
+          status: 'completed',
+        });
+
+        await this.db
+          .updateTable('manage_tokens')
+          .set({ last_verified: now })
+          .where('status', '=', 'active')
+          .execute();
+        console.log('Token verification timestamps updated');
+        return;
+      }
+
+      // Extract tokens from API response (Cloudflare API returns { result: [...] })
+      const apiTokens = apiTokensResponse.result || apiTokensResponse;
+
+      if (!Array.isArray(apiTokens)) {
+        console.error('Invalid token response format:', apiTokensResponse);
+        return;
+      }
+
+      // Get existing tokens from database
+      const existingTokens = await this.db
+        .selectFrom('manage_tokens')
+        .selectAll()
+        .execute();
+
+      // Create maps for easy lookup
+      const existingTokensMap = new Map(existingTokens.map(t => [t.token_id, t]));
+      const apiTokensMap = new Map(apiTokens.map(t => [t.id, t]));
+
+      // Process tokens that exist in API response
+      for (const apiToken of apiTokens) {
+        const existingToken = existingTokensMap.get(apiToken.id);
+
+        // Extract permissions from policies
+        const permissions = apiToken.policies?.map((policy: any) => policy.permission) || [];
+        const permissionsJson = JSON.stringify(permissions);
+        const policiesJson = JSON.stringify(apiToken.policies || []);
+
+        if (existingToken) {
+          // Check if token data has changed
+          const permissionsChanged = existingToken.permissions !== permissionsJson;
+          const statusChanged = existingToken.status !== apiToken.status;
+          const nameChanged = existingToken.name !== apiToken.name;
+          const expiresOnChanged = existingToken.expires_on !== apiToken.expires_on;
+          const issuedOnChanged = existingToken.issued_on !== apiToken.issued_on;
+          const policiesChanged = existingToken.policies !== policiesJson;
+
+          if (permissionsChanged || statusChanged || nameChanged || expiresOnChanged || issuedOnChanged || policiesChanged) {
+            // Update existing token
+            await this.db
+              .updateTable('manage_tokens')
+              .set({
+                name: apiToken.name,
+                status: apiToken.status,
+                permissions: permissionsJson,
+                policies: policiesJson,
+                issued_on: apiToken.issued_on,
+                expires_on: apiToken.expires_on,
+                last_verified: now,
+                updated_at: now,
+              })
+              .where('token_id', '=', apiToken.id)
+              .execute();
+          } else {
+            // Just update last verified timestamp
+            await this.db
+              .updateTable('manage_tokens')
+              .set({
+                last_verified: now,
+              })
+              .where('token_id', '=', apiToken.id)
+              .execute();
+          }
+        } else {
+          // Add new token
+          await this.db
+            .insertInto('manage_tokens')
+            .values({
+              id: generateUUID(),
+              token_id: apiToken.id,
+              name: apiToken.name,
+              status: apiToken.status,
+              permissions: permissionsJson,
+              policies: policiesJson,
+              issued_on: apiToken.issued_on,
+              expires_on: apiToken.expires_on,
+              last_verified: now,
+              created_at: now,
+              updated_at: now,
+            })
+            .execute();
+        }
+      }
+
+      // Mark tokens that no longer exist in API as deleted (soft delete)
+      for (const existingToken of existingTokens) {
+        if (!apiTokensMap.has(existingToken.token_id) && existingToken.status !== 'deleted') {
+          await this.db
+            .updateTable('manage_tokens')
+            .set({
+              status: 'deleted',
+              updated_at: now,
+            })
+            .where('token_id', '=', existingToken.token_id)
+            .execute();
+        }
+      }
+
+      console.log(`Token sync completed. Processed ${apiTokens.length} API tokens, ${existingTokens.length} existing tokens.`);
+    } catch (error: any) {
+      console.error('Error syncing tokens:', error);
+      // Don't throw - token sync failure shouldn't break health checks
+    }
+  }
+
   public async getLatestHealthCheck(): Promise<HealthCheckResult | null> {
     // Try to get from new health_test_results table first
-    const latestResult = await this.db.kysely
+    const latestResult = await this.db
       .selectFrom('health_test_results')
       .select(['run_group_id', 'run_at'])
       .orderBy('run_at', 'desc')
@@ -617,7 +944,7 @@ export class HealthCheckService {
       .executeTakeFirst();
 
     if (latestResult) {
-      const allResultsInGroup = await this.db.kysely
+      const allResultsInGroup = await this.db
         .selectFrom('health_test_results')
         .innerJoin('health_tests', 'health_tests.id', 'health_test_results.health_test_id')
         .where('health_test_results.run_group_id', '=', latestResult.run_group_id)

@@ -1,0 +1,107 @@
+---
+description: TypeScript and Cloudflare Workers development standards
+globs: ["*.ts", "*.js"]
+alwaysApply: false
+---
+
+# TypeScript & Cloudflare Workers Development
+
+## Code Style & Architecture
+
+### TypeScript Standards
+- Use TypeScript for all new files
+- Prefer `interface` over `type` for object shapes
+- Use strict null checks (`strict: true`)
+- Leverage utility types (`Partial<T>`, `Pick<T>`, etc.)
+
+### Cloudflare Workers Patterns
+- Use Hono framework for routing (`src/index.ts`)
+- Follow modular router architecture (`src/routes/`)
+- Implement proper middleware for auth, logging, CF SDK init
+- Use Durable Objects for stateful operations
+- Leverage environment bindings for configuration
+
+### Database Layer
+- Use Kysely for type-safe SQL queries
+- Define database schemas in `src/db/client.ts`
+- Create proper migrations in `migrations/` directory
+- Use transactions for multi-step operations
+
+### API Design
+- RESTful endpoint naming conventions
+- Consistent error response format
+- Proper HTTP status codes
+- Zod schemas for request/response validation
+- OpenAPI documentation generation
+
+## Service Layer Architecture
+
+### Token Management
+- Use `TokenManagerService` for all token operations
+- Implement cross-token authentication strategies
+- Store managed tokens securely in Secret Store
+- Audit all token operations in database
+
+### Health Monitoring
+- Implement comprehensive health checks
+- Use `HealthCheckService` for endpoint validation
+- Self-healing capabilities for failed services
+- Database logging for health history
+
+### Self-Healing
+- `SelfHealingService` for automatic issue resolution
+- Analyze health check failures
+- Generate actionable remediation steps
+- Track healing effectiveness
+
+## Testing Strategy
+
+### Unit Tests
+- Test business logic in service layers
+- Mock external dependencies (Cloudflare API)
+- Use vitest for fast execution
+
+### Integration Tests
+- Test full API endpoints
+- Use `./safe_test.sh` for consistent testing
+- Validate against real Cloudflare API (staging)
+- Include both happy and error paths
+
+### Health Tests
+- Automated endpoint health validation
+- Performance and correctness checks
+- Integration with CI/CD pipelines
+
+## Security & Best Practices
+
+### Authentication
+- Bearer token authentication for API access
+- Secure token storage (Secret Store for values, D1 for metadata)
+- Proper authorization checks in middleware
+- Audit logging for sensitive operations
+
+### Error Handling
+- Consistent error response format
+- Proper error logging with context
+- Graceful degradation for external service failures
+- User-friendly error messages
+
+### Performance
+- Optimize database queries
+- Use caching where appropriate
+- Monitor resource usage
+- Implement proper timeouts
+
+## Development Workflow
+
+### Local Development
+- Use `npm run dev` for local worker development
+- Test against local D1 database
+- Use `./safe_test.sh` for endpoint testing
+- Validate OpenAPI schema generation
+
+### Deployment
+- Automated deployments via GitHub Actions
+- Environment-specific configurations
+- Database migrations on deploy
+- Health checks post-deployment

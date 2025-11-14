@@ -1,34 +1,85 @@
-import { drizzle } from 'drizzle-orm/d1';
-import { Kysely } from 'kysely';
+import { Kysely, Generated } from 'kysely';
 import { D1Dialect } from 'kysely-d1';
-import * as schema from './schema';
 
-// Database types for Kysely - using actual column names from the schema
+// Database types for Kysely - complete schema matching final migration state
 export type Database = {
-  // Health check tables
-  health_checks: {
+  // Manage Tokens table
+  manage_tokens: {
     id: string;
-    endpoint: string;
-    status: number;
-    status_text: string;
-    response_time_ms: number;
-    run_at: string;
-    check_group_id: string;
-    overall_status: string | null;
+    token_id: string;
+    name: string | null;
+    status: string;
+    permissions: string | null;
+    policies: string | null;
+    issued_on: string | null;
+    expires_on: string | null;
+    last_verified: string;
+    created_at: string;
+    updated_at: string;
   };
+
+  // Sessions table
+  sessions: {
+    id: string;
+    session_id: string;
+    request_type: string;
+    request_method: string | null;
+    request_path: string | null;
+    request_headers: string | null;
+    request_body: string | null;
+    user_agent: string | null;
+    client_ip: string | null;
+    account_id: string | null;
+    user_id: string | null;
+    started_at: string;
+    completed_at: string | null;
+    duration_ms: number | null;
+    status_code: number | null;
+    response_size: number | null;
+    error_message: string | null;
+    metadata: string | null;
+    created_at: string;
+  };
+
+  // Actions log table
+  actions_log: {
+    id: string;
+    session_id: string;
+    action_type: string;
+    action_name: string;
+    timestamp: string;
+    duration_ms: number | null;
+    status: string;
+    input_data: string | null;
+    output_data: string | null;
+    error_message: string | null;
+    metadata: string | null;
+    sequence_number: number;
+    created_at: string;
+  };
+
+  // Health tests table (consolidated with unit_test_definitions fields)
   health_tests: {
     id: string;
+    test_key: string;
     name: string;
+    scope: string;
     endpoint_path: string;
     http_method: string;
     category: string;
     description: string | null;
+    executor_key: string;
+    error_meanings_json: string | null;
+    error_solutions_json: string | null;
+    metadata: string | null;
     request_body: string | null;
-    enabled: boolean;
-    is_active: boolean;
+    enabled: number; // SQLite boolean as integer
+    is_active: number; // SQLite boolean as integer
     created_at: string;
     updated_at: string;
   };
+
+  // Health test results (includes legacy health_checks fields)
   health_test_results: {
     id: string;
     health_test_id: string;
@@ -40,64 +91,22 @@ export type Database = {
     error_message: string | null;
     response_body: string | null;
     run_at: string;
+    endpoint: string | null; // From legacy health_checks
+    overall_status: string | null; // From legacy health_checks
   };
 
-  // Unit test tables
-  unit_test_definitions: {
-    id: string;
-    test_key: string;
-    name: string;
-    scope: string;
-    category: string | null;
-    description: string | null;
-    executor_key: string;
-    error_meanings_json: string | null;
-    error_solutions_json: string | null;
-    metadata: string | null;
-    is_active: boolean;
-    created_at: string;
-    updated_at: string;
-  };
-  unit_test_results: {
-    id: string;
-    session_uuid: string;
-    test_definition_id: string;
-    status: string;
-    http_status: number | null;
-    http_status_text: string | null;
-    total_ms: number;
-    run_at: string;
-    verbose_output: string | null;
-    error_details: string | null;
-    ai_prompt_to_fix_error: string | null;
-    ai_human_readable_error_description: string | null;
-    ai_model_response: string | null;
-    metadata: string | null;
-  };
-  unit_test_sessions: {
-    session_uuid: string;
-    trigger_source: string;
-    started_at: string;
-    completed_at: string;
-    total_tests: number;
-    passed_tests: number;
-    failed_tests: number;
-    duration_ms: number;
-    notes: string | null;
-    created_at: string;
-  };
-
-  // API permissions
+  // API permissions (with verbs column)
   api_permissions_map: {
-    id: number;
+    id: Generated<number>; // AUTOINCREMENT
     permission: string;
     base_path: string;
+    verbs: string | null;
     description: string | null;
   };
 
   // Coach telemetry
   coach_telemetry: {
-    id: number;
+    id: Generated<number>; // AUTOINCREMENT
     timestamp: string;
     prompt: string;
     inferred_product: string | null;
@@ -115,6 +124,7 @@ export type Database = {
   self_healing_attempts: {
     id: string;
     health_check_group_id: string;
+    health_test_result_id: string | null;
     health_test_id: string | null;
     ai_analysis: string;
     ai_recommendation: string;
@@ -141,24 +151,35 @@ export type Database = {
     metadata: string | null;
     created_at: string;
   };
+
+  // Insight fixes table - tracks when AI-identified issues are resolved
+  insight_fixes: {
+    id: string;
+    insight_type: string;
+    insight_category: string | null;
+    fix_description: string;
+    fixed_at: string;
+    fixed_by: string | null;
+    metadata: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+
+  // Token health log - tracks token health check events
+  token_health_log: {
+    id: Generated<number>; // AUTOINCREMENT
+    event_type: string;
+    metadata: string;
+    created_at: Generated<string>; // Has DEFAULT CURRENT_TIMESTAMP
+  };
 };
 
-export interface DbClients {
-  drizzle: ReturnType<typeof drizzle<typeof schema>>;
-  kysely: Kysely<Database>;
-}
-
 /**
- * Initialize both Drizzle and Kysely clients for the database
- * This provides a hybrid ORM approach where:
- * - Drizzle handles schema, migrations, and simple CRUD operations
- * - Kysely handles complex queries, joins, and dynamic filtering
+ * Initialize Kysely client for the database
+ * Uses the official kysely-d1 dialect for Cloudflare D1 integration
  */
-export function initDb(env: { DB: D1Database }): DbClients {
-  return {
-    drizzle: drizzle(env.DB, { schema }),
-    kysely: new Kysely<Database>({
-      dialect: new D1Dialect({ database: env.DB }),
-    }),
-  };
+export function initDb(env: { DB: D1Database }): Kysely<Database> {
+  return new Kysely<Database>({
+    dialect: new D1Dialect({ database: env.DB }),
+  });
 }

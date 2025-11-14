@@ -1,5 +1,6 @@
-import { Env, generateUUID } from '../types';
-import { initDb, type DbClients } from '../db/client';
+import { Env, generateUUID, getCloudflareToken } from '../types';
+import { initDb, type Database } from '../db/client';
+import { Kysely } from 'kysely';
 import { CloudflareApiClient } from '../routes/api/apiClient';
 
 export interface HealingAction {
@@ -24,7 +25,7 @@ export interface SelfHealingResult {
 
 export class SelfHealingService {
   private env: Env;
-  private db: DbClients;
+  private db: Kysely<Database>;
   private apiClient: CloudflareApiClient;
   private accountId: string;
   private stepCallbacks: Map<string, (step: any) => void> = new Map(); // For real-time updates
@@ -33,7 +34,8 @@ export class SelfHealingService {
     this.env = env;
     this.db = initDb(env);
     this.accountId = accountId;
-    this.apiClient = new CloudflareApiClient({ apiToken: env.CLOUDFLARE_TOKEN || '' });
+    // Use the new token helper to get the appropriate token
+    this.apiClient = new CloudflareApiClient({ apiToken: getCloudflareToken(env) });
   }
 
   /**
@@ -60,7 +62,7 @@ export class SelfHealingService {
     const stepId = generateUUID();
     const now = new Date().toISOString();
 
-      await this.db.kysely
+      await this.db
         .insertInto('self_healing_steps')
         .values({
           id: stepId,
@@ -104,6 +106,7 @@ export class SelfHealingService {
   public async analyzeAndHeal(
     healthCheckGroupId: string,
     failedTests: Array<{
+      test_result_id?: string; // ID of the health_test_results row
       test_id: string;
       test_name: string;
       endpoint_path: string;
@@ -123,11 +126,12 @@ export class SelfHealingService {
       try {
         // Create healing attempt record first
         const now = new Date().toISOString();
-        await this.db.kysely
+        await this.db
           .insertInto('self_healing_attempts')
           .values({
             id: attemptId,
             health_check_group_id: healthCheckGroupId,
+            health_test_result_id: test.test_result_id || null,
             health_test_id: test.test_id,
             ai_analysis: '', // Will be updated
             ai_recommendation: '', // Will be updated
@@ -173,7 +177,7 @@ export class SelfHealingService {
           `AI Analysis Complete: ${aiAnalysis.analysis}`,
           'completed',
           aiAnalysis.analysis,
-          null,
+          undefined,
           { error_type: aiAnalysis.error_type, can_auto_fix: aiAnalysis.can_auto_fix }
         );
 
@@ -204,7 +208,7 @@ export class SelfHealingService {
         );
 
         // Update attempt with analysis and action
-        await this.db.kysely
+        await this.db
           .updateTable('self_healing_attempts')
           .set({
             ai_analysis: aiAnalysis.analysis,
@@ -257,7 +261,7 @@ export class SelfHealingService {
         );
 
         // Update attempt with effectiveness analysis
-        await this.db.kysely
+        await this.db
           .updateTable('self_healing_attempts')
           .set({
             status: healingResult.status,
@@ -288,7 +292,7 @@ export class SelfHealingService {
         results.push({
           ...healingResult,
           effectiveness_analysis: effectivenessAnalysis.analysis,
-          manual_steps_required: effectivenessAnalysis.manual_steps,
+          manual_steps_required: effectivenessAnalysis.manual_steps || undefined,
         });
       } catch (error: any) {
         console.error(`Failed to heal test ${test.test_name}:`, error);
@@ -307,7 +311,7 @@ export class SelfHealingService {
           { error: error.message, stack: error.stack }
         );
 
-        await this.db.kysely
+        await this.db
           .updateTable('self_healing_attempts')
           .set({
             status: 'failed',
@@ -633,14 +637,14 @@ Return JSON with:
       const basePathPattern = `%${pathParts.join('/')}%`;
       
       // Query the API permissions map using Drizzle ORM
-      const permissions = await this.db.kysely
+      const permissions = await this.db
         .selectFrom('api_permissions_map')
         .where('base_path', 'like', basePathPattern)
         .select(['permission'])
         .execute();
 
       if (permissions.length > 0) {
-        return permissions.map((p) => p.permission);
+        return permissions.map((p: any) => p.permission);
       }
 
       // Fallback: Infer from endpoint path
@@ -690,7 +694,7 @@ Return JSON with:
     const now = new Date().toISOString();
 
     // Update status to in_progress
-    await this.db.kysely
+    await this.db
       .updateTable('self_healing_attempts')
       .set({
         status: 'in_progress',
@@ -699,32 +703,32 @@ Return JSON with:
       .where('id', '=', attemptId)
       .execute();
 
+    let errorMessage: string | undefined;
+    
     try {
       let verificationResult: any = null;
       let status: 'success' | 'failed' = 'failed';
-      let errorMessage: string | undefined;
 
       if (action.type === 'update_token_permissions') {
         // Attempt to create a new token with the required permissions
         // Note: We can't modify existing tokens, but we can create a new one
+        const requiredPermissions = action.details.required_permissions || [];
+        
         try {
           // Get permission groups to map permission names to IDs
           const permissionGroupsResponse = await fetch(
             'https://api.cloudflare.com/client/v4/user/tokens/permission_groups',
             {
               headers: {
-                'Authorization': `Bearer ${this.env.CLOUDFLARE_TOKEN}`,
+                'Authorization': `Bearer ${getCloudflareToken(this.env)}`,
                 'Content-Type': 'application/json',
               },
             }
           );
 
           if (permissionGroupsResponse.ok) {
-            const permissionGroups = await permissionGroupsResponse.json();
+            const permissionGroups: any = await permissionGroupsResponse.json();
             const groups = permissionGroups.result || [];
-            
-            // Map permission names to permission group IDs
-            const requiredPermissions = action.details.required_permissions || [];
             const policies: any[] = [];
             
             for (const permName of requiredPermissions) {
@@ -758,7 +762,7 @@ Return JSON with:
                 {
                   method: 'POST',
                   headers: {
-                    'Authorization': `Bearer ${this.env.CLOUDFLARE_TOKEN}`,
+                    'Authorization': `Bearer ${getCloudflareToken(this.env)}`,
                     'Content-Type': 'application/json',
                   },
                   body: JSON.stringify({
@@ -770,13 +774,13 @@ Return JSON with:
               );
 
               if (tokenResponse.ok) {
-                const tokenData = await tokenResponse.json();
+                const tokenData: any = await tokenResponse.json();
                 verificationResult = {
                   action: 'created_new_token',
                   token_name: tokenName,
                   token_id: tokenData.result?.id,
                   required_permissions: requiredPermissions,
-                  note: `Created new token "${tokenName}" with required permissions. Update CLOUDFLARE_TOKEN environment variable with the new token value.`,
+                  note: `Created new token "${tokenName}" with required permissions. Update CLOUDFLARE_ACCOUNT_TOKEN environment variable with the new token value.`,
                   new_token_value: tokenData.result?.value, // Include token value for easy update
                   warning: 'Store this token securely and update your environment variables.',
                 };
@@ -835,7 +839,7 @@ Return JSON with:
       }
 
       // Update with success
-      await this.db.kysely
+      await this.db
         .updateTable('self_healing_attempts')
         .set({
           status,
@@ -859,7 +863,7 @@ Return JSON with:
       errorMessage = error.message;
       
       // Update with failure
-      await this.db.kysely
+      await this.db
         .updateTable('self_healing_attempts')
         .set({
           status: 'failed',
@@ -886,7 +890,7 @@ Return JSON with:
    * Get all healing attempts for a health check group using Kysely
    */
   public async getHealingAttempts(healthCheckGroupId: string): Promise<any[]> {
-    const attempts = await this.db.kysely
+    const attempts = await this.db
       .selectFrom('self_healing_attempts')
       .where('health_check_group_id', '=', healthCheckGroupId)
       .orderBy('created_at', 'desc')
@@ -895,8 +899,8 @@ Return JSON with:
 
     // For each attempt, fetch its steps
     const attemptsWithSteps = await Promise.all(
-      attempts.map(async (attempt) => {
-        const steps = await this.db.kysely
+      attempts.map(async (attempt: any) => {
+        const steps = await this.db
           .selectFrom('self_healing_steps')
           .where('healing_attempt_id', '=', attempt.id)
           .orderBy('step_number')
@@ -907,7 +911,7 @@ Return JSON with:
           ...attempt,
           action_details: attempt.action_details ? JSON.parse(attempt.action_details) : null,
           verification_result: attempt.verification_result ? JSON.parse(attempt.verification_result) : null,
-          steps: steps.map(step => ({
+          steps: steps.map((step: any) => ({
             id: step.id,
             step_number: step.step_number,
             step_type: step.step_type,
@@ -927,14 +931,14 @@ Return JSON with:
   }
 
   public async getHealingSteps(attemptId: string): Promise<any[]> {
-    const steps = await this.db.kysely
+    const steps = await this.db
       .selectFrom('self_healing_steps')
       .where('healing_attempt_id', '=', attemptId)
       .orderBy('step_number')
       .selectAll()
       .execute();
 
-    return steps.map(step => ({
+    return steps.map((step: any) => ({
       id: step.id,
       healing_attempt_id: step.healing_attempt_id,
       step_number: step.step_number,
@@ -946,6 +950,29 @@ Return JSON with:
       status: step.status,
       metadata: step.metadata ? JSON.parse(step.metadata) : null,
       created_at: step.created_at,
+    }));
+  }
+
+  public async getHealingAttemptsForSession(healthCheckGroupId: string): Promise<SelfHealingResult[]> {
+    const attempts = await this.db
+      .selectFrom('self_healing_attempts')
+      .where('health_check_group_id', '=', healthCheckGroupId)
+      .selectAll()
+      .execute();
+
+    return attempts.map((attempt: any) => ({
+      attempt_id: attempt.id,
+      health_check_group_id: attempt.health_check_group_id,
+      health_test_id: attempt.health_test_id,
+      ai_analysis: attempt.ai_analysis,
+      ai_recommendation: attempt.ai_recommendation,
+      healing_action: attempt.healing_action ? JSON.parse(attempt.healing_action) : { type: 'other', details: {}, description: 'Unknown action' },
+      status: attempt.status as 'pending' | 'in_progress' | 'success' | 'failed',
+      error_message: attempt.error_message || undefined,
+      verification_result: attempt.verification_result ? JSON.parse(attempt.verification_result) : undefined,
+      effectiveness_analysis: attempt.effectiveness_analysis || undefined,
+      manual_steps_required: attempt.manual_steps_required || undefined,
+      test_name: 'Unknown Test', // Will be enriched by the caller
     }));
   }
 }

@@ -20,11 +20,11 @@ import Cloudflare from 'cloudflare';
  */
 export class CloudflareManagerRPC extends WorkerEntrypoint<Env> {
   private getApiClient(): CloudflareApiClient {
-    return new CloudflareApiClient({ apiToken: this.env.CLOUDFLARE_TOKEN });
+    return new CloudflareApiClient({ apiToken: this.env.CLOUDFLARE_ACCOUNT_TOKEN });
   }
 
   private getCloudflareSDK(): Cloudflare {
-    return new Cloudflare({ apiToken: this.env.CLOUDFLARE_TOKEN });
+    return new Cloudflare({ apiToken: this.env.CLOUDFLARE_ACCOUNT_TOKEN });
   }
 
   /**

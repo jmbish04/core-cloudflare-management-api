@@ -1,0 +1,28 @@
+---
+description: Prevent infinite curl loops during local testing
+alwaysApply: true
+---
+
+# Unit Test Safety
+
+All testing agents must use `./safe_test.sh` instead of calling curl directly. This ensures:
+
+- Consistent timeouts
+- Prevents hanging processes
+- Enforces standard JSON parsing for all /health or /unit-tests endpoints
+
+## Applicable Agents
+
+- grok
+- qa
+- build
+- infra
+- agent-*
+
+## Requirements
+
+- Testing agents must be configured to fail builds if safe_test.sh returns non-zero or unexpected output
+- Testing agents should include both happy-path and edge-path tests for all API endpoints
+- Test output must be machine-parsable (JSON) so that CI systems can consume the results
+- Test agents should generate coverage reports and ensure coverage thresholds are maintained
+- Any new integration tests must be registered in the test manifest/config and executed via CI

@@ -1,4 +1,5 @@
 // src/services/apiClient.ts
+import { LoggingService } from '../../services/logging';
 
 /**
  * Configuration for Cloudflare API authentication.
@@ -62,8 +63,9 @@ export class ApiClientError extends Error {
 export class CloudflareApiClient {
   private baseUrl: string;
   private authConfig: CloudflareAuthConfig;
+  private loggingService?: LoggingService;
 
-  constructor(authConfig: CloudflareAuthConfig, baseUrl: string = 'https://api.cloudflare.com/client/v4') {
+  constructor(authConfig: CloudflareAuthConfig, baseUrl: string = 'https://api.cloudflare.com/client/v4', loggingService?: LoggingService) {
     if (
       !authConfig ||
       (!('apiToken' in authConfig) &&
@@ -75,6 +77,7 @@ export class CloudflareApiClient {
     }
     this.authConfig = authConfig;
     this.baseUrl = baseUrl;
+    this.loggingService = loggingService;
   }
 
   private getAuthHeaders(): Headers {
@@ -164,40 +167,152 @@ export class CloudflareApiClient {
         url += `?${queryString}`;
       }
     }
-    const response = await this.rawRequest(url, { ...options, method: 'GET' });
-    return this.handleResponse<T>(response);
+
+    const startTime = Date.now();
+    let actionId: string | undefined;
+
+    try {
+      // Log API call start
+      if (this.loggingService) {
+        actionId = await this.loggingService.logCloudflareApiCall('GET', `${this.baseUrl}${url}`, params);
+      }
+
+      const response = await this.rawRequest(url, { ...options, method: 'GET' });
+      const result = await this.handleResponse<T>(response);
+
+      // Log API call success
+      if (this.loggingService && actionId) {
+        await this.loggingService.logCloudflareApiResponse(actionId, result);
+      }
+
+      return result;
+    } catch (error) {
+      // Log API call failure
+      if (this.loggingService && actionId) {
+        await this.loggingService.logCloudflareApiResponse(actionId, null, (error as Error).message);
+      }
+      throw error;
+    }
   }
 
   public async post<T>(endpoint: string, body: any): Promise<T> {
-    const response = await this.rawRequest(endpoint, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-    return this.handleResponse<T>(response);
+    let actionId: string | undefined;
+
+    try {
+      // Log API call start
+      if (this.loggingService) {
+        actionId = await this.loggingService.logCloudflareApiCall('POST', `${this.baseUrl}${endpoint}`, body);
+      }
+
+      const response = await this.rawRequest(endpoint, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      const result = await this.handleResponse<T>(response);
+
+      // Log API call success
+      if (this.loggingService && actionId) {
+        await this.loggingService.logCloudflareApiResponse(actionId, result);
+      }
+
+      return result;
+    } catch (error) {
+      // Log API call failure
+      if (this.loggingService && actionId) {
+        await this.loggingService.logCloudflareApiResponse(actionId, null, (error as Error).message);
+      }
+      throw error;
+    }
   }
 
   public async put<T>(endpoint: string, body: any): Promise<T> {
-    const response = await this.rawRequest(endpoint, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    });
-    return this.handleResponse<T>(response);
+    let actionId: string | undefined;
+
+    try {
+      // Log API call start
+      if (this.loggingService) {
+        actionId = await this.loggingService.logCloudflareApiCall('PUT', `${this.baseUrl}${endpoint}`, body);
+      }
+
+      const response = await this.rawRequest(endpoint, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      });
+      const result = await this.handleResponse<T>(response);
+
+      // Log API call success
+      if (this.loggingService && actionId) {
+        await this.loggingService.logCloudflareApiResponse(actionId, result);
+      }
+
+      return result;
+    } catch (error) {
+      // Log API call failure
+      if (this.loggingService && actionId) {
+        await this.loggingService.logCloudflareApiResponse(actionId, null, (error as Error).message);
+      }
+      throw error;
+    }
   }
 
   public async patch<T>(endpoint: string, body: any): Promise<T> {
-    const response = await this.rawRequest(endpoint, {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-    });
-    return this.handleResponse<T>(response);
+    let actionId: string | undefined;
+
+    try {
+      // Log API call start
+      if (this.loggingService) {
+        actionId = await this.loggingService.logCloudflareApiCall('PATCH', `${this.baseUrl}${endpoint}`, body);
+      }
+
+      const response = await this.rawRequest(endpoint, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      });
+      const result = await this.handleResponse<T>(response);
+
+      // Log API call success
+      if (this.loggingService && actionId) {
+        await this.loggingService.logCloudflareApiResponse(actionId, result);
+      }
+
+      return result;
+    } catch (error) {
+      // Log API call failure
+      if (this.loggingService && actionId) {
+        await this.loggingService.logCloudflareApiResponse(actionId, null, (error as Error).message);
+      }
+      throw error;
+    }
   }
 
   public async delete<T>(endpoint: string, body?: any): Promise<T> {
-    const options: RequestInit = { method: 'DELETE' };
-    if (body) {
-      options.body = JSON.stringify(body);
+    let actionId: string | undefined;
+
+    try {
+      // Log API call start
+      if (this.loggingService) {
+        actionId = await this.loggingService.logCloudflareApiCall('DELETE', `${this.baseUrl}${endpoint}`, body);
+      }
+
+      const options: RequestInit = { method: 'DELETE' };
+      if (body) {
+        options.body = JSON.stringify(body);
+      }
+      const response = await this.rawRequest(endpoint, options);
+      const result = await this.handleResponse<T>(response);
+
+      // Log API call success
+      if (this.loggingService && actionId) {
+        await this.loggingService.logCloudflareApiResponse(actionId, result);
+      }
+
+      return result;
+    } catch (error) {
+      // Log API call failure
+      if (this.loggingService && actionId) {
+        await this.loggingService.logCloudflareApiResponse(actionId, null, (error as Error).message);
+      }
+      throw error;
     }
-    const response = await this.rawRequest(endpoint, options);
-    return this.handleResponse<T>(response);
   }
 }

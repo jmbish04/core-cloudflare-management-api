@@ -11,7 +11,7 @@ declare namespace Cloudflare {
 		CLIENT_AUTH_TOKEN: string;
 		CLOUDFLARE_ACCOUNT_ID: string;
 		WORKER_URL: string;
-		CLOUDFLARE_TOKEN: string;
+		CLOUDFLARE_ACCOUNT_TOKEN: string;
 		LOG_TAILING_DO: DurableObjectNamespace<import("./src/index").LogTailingDO>;
 		CONTEXT_COACH: DurableObjectNamespace<import("./src/index").ContextCoachDO>;
 		DB: D1Database;

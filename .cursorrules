@@ -1,0 +1,11 @@
+# LEGACY: This file has been migrated to .cursor/rules/ directory
+# See .cursor/rules/ for the new project rules in MDC format
+# This legacy format will be deprecated - please use the new rules instead
+
+# Migrated rules:
+# - unit-test-safety.mdc
+# - cloudflare-api-reference.mdc
+# - agent-workflow.mdc
+# - typescript-development.mdc
+# - database-migrations.mdc
+

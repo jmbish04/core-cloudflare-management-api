@@ -1,0 +1,117 @@
+---
+description: Database schema management and migration practices
+globs: ["migrations/*.sql", "src/db/*.ts"]
+alwaysApply: false
+---
+
+# Database Schema Management
+
+## Migration Strategy
+
+### File Naming
+- Use sequential numbering: `0001_description.sql`
+- Descriptive, snake_case names
+- Prefix with operation type when relevant:
+  - `create_`, `add_`, `drop_`, `alter_`, `merge_`
+
+### Migration Content
+- **Transactional**: Wrap changes in transactions
+- **Idempotent**: Safe to run multiple times
+- **Reversible**: Include rollback logic when possible
+- **Well-commented**: Explain purpose and impact
+
+### Schema Organization
+```
+Database Tables:
+├── manage_tokens          # Token inventory and metadata
+├── sessions               # Request session tracking
+├── actions_log            # Detailed action audit trail
+├── health_tests           # Test definitions and configuration
+├── health_test_results    # Test execution results
+├── api_permissions_map    # API permission definitions
+├── coach_telemetry        # AI assistant interaction logs
+├── token_health_log       # Token health monitoring
+├── self_healing_attempts  # Automated healing operations
+└── insight_fixes          # Issue resolution tracking
+```
+
+## Kysely Type Safety
+
+### Database Interface
+- Define complete schema in `src/db/client.ts`
+- Use `Generated<T>` for auto-increment fields
+- Use `Generated<string>` for timestamp defaults
+- Keep types synchronized with migrations
+
+### Query Patterns
+```typescript
+// Preferred patterns
+await db.selectFrom('table').select(['field1', 'field2']).execute()
+await db.insertInto('table').values(data).execute()
+await db.updateTable('table').set(updates).where(condition).execute()
+await db.deleteFrom('table').where(condition).execute()
+```
+
+### Type Safety Benefits
+- Compile-time SQL validation
+- IntelliSense for table/column names
+- Type-safe result objects
+- Automatic join type inference
+
+## Data Integrity
+
+### Foreign Keys
+- Define relationships explicitly
+- Use cascading deletes carefully
+- Validate constraints in application logic
+
+### Indexing Strategy
+- Index frequently queried columns
+- Composite indexes for multi-column WHERE clauses
+- Monitor query performance and add indexes as needed
+
+### Data Validation
+- Validate data at application layer (Zod schemas)
+- Use database constraints as safety net
+- Implement soft deletes for audit trails
+
+## Migration Workflow
+
+### Development
+1. Create migration file with proper naming
+2. Test migration on local D1 database
+3. Update `src/db/client.ts` types
+4. Run TypeScript compilation check
+5. Test application functionality
+
+### Deployment
+1. Migrations run automatically in CI/CD
+2. Backup database before migrations
+3. Rollback plan documented for critical changes
+4. Post-migration health checks
+
+### Rollback Strategy
+- Test rollback migrations in development
+- Document manual rollback procedures
+- Consider data migration implications
+- Plan for zero-downtime deployments
+
+## Best Practices
+
+### Performance
+- Avoid long-running migrations in production
+- Batch large data operations
+- Monitor migration execution time
+- Use appropriate indexes for new queries
+
+### Testing
+- Test migrations on realistic data sets
+- Validate data integrity post-migration
+- Include migration tests in CI pipeline
+- Test rollback scenarios
+
+### Documentation
+- Document schema changes and rationale
+- Update API documentation for schema changes
+- Maintain changelog for database changes
+- Include migration notes in release documentation

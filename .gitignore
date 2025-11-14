@@ -146,3 +146,4 @@ vite.config.ts.timestamp-*
 *.sqlite-shm
 *.sqlite-wal
 api-schemas-main
+.wrangler/

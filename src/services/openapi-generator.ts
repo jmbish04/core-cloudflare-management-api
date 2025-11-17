@@ -359,25 +359,12 @@ User: "Deploy my worker"
       '/api/call': {
         post: {
           summary: 'Perform a Cloudflare API call (Conversational Meta-API)',
-          description: `
-The model may ask one short follow-up if details are missing. If product/method omitted, the server consults an internal coach to infer them.
-
-The API automatically infers HTTP methods from action names:
-- "list" or "get" → GET
-- "create", "deploy", "run" → POST
-- "update" → PUT
-- "modify" → PATCH
-- "delete" or "remove" → DELETE
-
-If method is omitted, it will be inferred from action. If action is also omitted, method defaults to GET.
-Product names are case-insensitive.
-
-**Best practices:**
-- For simple queries, only provide product and let the API infer the rest
-- For complex operations, provide full details including body
-- Use /api/meta/help to discover available capabilities
-- Ask users conversationally for missing required parameters
-`,
+          description: `Intelligently proxies a request to the Cloudflare API. 
+          Automatically infers the HTTP method from action names 
+          (e.g., "list" -> GET, "create" -> POST, "delete" -> DELETE). 
+          If product or method are omitted, the server will attempt 
+          to infer them. Product names are case-insensitive.
+          `,
           operationId: 'cloudflare_meta_api_call',
           requestBody: {
             required: true,

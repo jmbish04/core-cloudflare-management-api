@@ -55,6 +55,33 @@ deployFlows.post('/from-content', async (c) => {
       errors: [],
     };
 
+    // **NEW: Check and enable workers.dev subdomain if not active**
+    try {
+      await cf.workers.subdomains.get({ account_id: accountId });
+      result.steps_completed.push('subdomain_verified');
+    } catch (error: any) {
+      if (error.status === 404) {
+        // Subdomain doesn't exist, create it.
+        // !! CRUCIAL: This is a one-time operation for the account.
+        // !! You MUST replace this placeholder with your desired subdomain.
+        const desiredSubdomain = "hacolby"; 
+        
+        if (desiredSubdomain === "your-account-subdomain") {
+            throw new Error("Subdomain check failed: 'your-account-subdomain' is a placeholder. Please edit src/routes/flows/deploy.ts with your desired account subdomain.");
+        }
+
+        console.log(`Attempting to create workers.dev subdomain: ${desiredSubdomain}`);
+        await cf.workers.subdomains.create({
+          account_id: accountId,
+          body: { subdomain: desiredSubdomain }
+        });
+        result.steps_completed.push('subdomain_created');
+      } else {
+        // A different error occurred (e.g., auth)
+        throw new Error(`Failed to verify workers.dev subdomain: ${error.message}`);
+      }
+    }
+
     // Build worker bindings
     const workerBindings = buildWorkerBindings(bindings);
 
@@ -108,11 +135,28 @@ deployFlows.post('/from-content', async (c) => {
       console.error('Failed to verify deployment:', error);
     }
 
+    // **NEW: Get and return the full worker URL**
+    let workerUrl = null;
+    try {
+      const subdomainResponse = await cf.workers.subdomains.get({
+        account_id: accountId,
+      });
+      const subdomain = (subdomainResponse as any).subdomain;
+      if (subdomain) {
+        workerUrl = `https://${script_name}.${subdomain}.workers.dev`;
+        result.url = workerUrl; // Add the URL to the result object
+      }
+      result.steps_completed.push('url_fetched');
+    } catch (error) {
+      console.error('Failed to get subdomain for URL:', error);
+    }
+
     return c.json(
       {
         success: true,
         result,
         message: `Worker '${script_name}' deployed successfully`,
+        url: workerUrl, // Add URL to top level for easy access
       },
       201
     );
@@ -154,6 +198,26 @@ deployFlows.post('/from-canvas', async (c) => {
       errors: [],
       assets_uploaded: 0,
     };
+    
+    // **NEW: Check and enable workers.dev subdomain if not active**
+    try {
+      await cf.workers.subdomains.get({ account_id: accountId });
+      result.steps_completed.push('subdomain_verified');
+    } catch (error: any) {
+      if (error.status === 404) {
+        const desiredSubdomain = "hacolby"; // !! MUST BE CHANGED
+        if (desiredSubdomain === "your-account-subdomain") {
+            throw new Error("Subdomain check failed: 'your-account-subdomain' is a placeholder. Please edit src/routes/flows/deploy.ts with your desired account subdomain.");
+        }
+        await cf.workers.subdomains.create({
+          account_id: accountId,
+          body: { subdomain: desiredSubdomain }
+        });
+        result.steps_completed.push('subdomain_created');
+      } else {
+        throw new Error(`Failed to verify workers.dev subdomain: ${error.message}`);
+      }
+    }
 
     const hasAssets = Object.keys(assets).length > 0;
 
@@ -282,12 +346,29 @@ deployFlows.post('/from-canvas', async (c) => {
         500
       );
     }
+    
+    // **NEW: Get and return the full worker URL**
+    let workerUrl = null;
+    try {
+      const subdomainResponse = await cf.workers.subdomains.get({
+        account_id: accountId,
+      });
+      const subdomain = (subdomainResponse as any).subdomain;
+      if (subdomain) {
+        workerUrl = `https://${script_name}.${subdomain}.workers.dev`;
+        result.url = workerUrl; // Add the URL to the result object
+      }
+      result.steps_completed.push('url_fetched');
+    } catch (error) {
+      console.error('Failed to get subdomain for URL:', error);
+    }
 
     return c.json(
       {
         success: true,
         result,
         message: `Worker '${script_name}' deployed with ${result.assets_uploaded} assets`,
+        url: workerUrl, // Add URL to top level for easy access
       },
       201
     );
@@ -326,6 +407,26 @@ deployFlows.post('/with-config', async (c) => {
       steps_completed: [],
       errors: [],
     };
+    
+    // **NEW: Check and enable workers.dev subdomain if not active**
+    try {
+      await cf.workers.subdomains.get({ account_id: accountId });
+      result.steps_completed.push('subdomain_verified');
+    } catch (error: any) {
+      if (error.status === 404) {
+        const desiredSubdomain = "hacolby"; // !! MUST BE CHANGED
+        if (desiredSubdomain === "your-account-subdomain") {
+            throw new Error("Subdomain check failed: 'your-account-subdomain' is a placeholder. Please edit src/routes/flows/deploy.ts with your desired account subdomain.");
+        }
+        await cf.workers.subdomains.create({
+          account_id: accountId,
+          body: { subdomain: desiredSubdomain }
+        });
+        result.steps_completed.push('subdomain_created');
+      } else {
+        throw new Error(`Failed to verify workers.dev subdomain: ${error.message}`);
+      }
+    }
 
     // Extract bindings from config
     const bindings = {
@@ -392,12 +493,29 @@ deployFlows.post('/with-config', async (c) => {
         500
       );
     }
+    
+    // **NEW: Get and return the full worker URL**
+    let workerUrl = null;
+    try {
+      const subdomainResponse = await cf.workers.subdomains.get({
+        account_id: accountId,
+      });
+      const subdomain = (subdomainResponse as any).subdomain;
+      if (subdomain) {
+        workerUrl = `https://${script_name}.${subdomain}.workers.dev`;
+        result.url = workerUrl; // Add the URL to the result object
+      }
+      result.steps_completed.push('url_fetched');
+    } catch (error) {
+      console.error('Failed to get subdomain for URL:', error);
+    }
 
     return c.json(
       {
         success: true,
         result,
         message: `Worker '${script_name}' deployed with configuration`,
+        url: workerUrl, // Add URL to top level for easy access
       },
       201
     );
@@ -483,11 +601,28 @@ deployFlows.put('/update/:scriptName', async (c) => {
         500
       );
     }
+    
+    // **NEW: Get and return the full worker URL**
+    let workerUrl = null;
+    try {
+      const subdomainResponse = await cf.workers.subdomains.get({
+        account_id: accountId,
+      });
+      const subdomain = (subdomainResponse as any).subdomain;
+      if (subdomain) {
+        workerUrl = `https://${scriptName}.${subdomain}.workers.dev`;
+        result.url = workerUrl; // Add the URL to the result object
+      }
+      result.steps_completed.push('url_fetched');
+    } catch (error) {
+      console.error('Failed to get subdomain for URL:', error);
+    }
 
     return c.json({
       success: true,
       result,
       message: `Worker '${scriptName}' updated successfully`,
+      url: workerUrl, // Add URL to top level for easy access
     });
   } catch (error: any) {
     console.error('Error in update deployment flow:', error);
@@ -665,7 +800,8 @@ deployFlows.get('/status/:scriptName', async (c) => {
       const workerResponse = await cf.workers.scripts.get(scriptName, {
         account_id: accountId,
       });
-      const worker: any = await workerResponse.json();
+      // The SDK returns a Response, not JSON, so we need to .json() it
+      const worker: any = await workerResponse.json(); 
       status.worker = {
         id: worker.id,
         created_on: worker.created_on,
@@ -673,25 +809,33 @@ deployFlows.get('/status/:scriptName', async (c) => {
         compatibility_date: worker.compatibility_date,
         bindings: worker.bindings?.length || 0,
       };
-    } catch (error) {
-      return c.json(
-        { success: false, error: `Worker '${scriptName}' not found` },
-        404
-      );
+    } catch (error: any) {
+       // Check if the error is a 404
+      if (error instanceof Error && error.message.includes('404')) {
+         return c.json(
+          { success: false, error: `Worker '${scriptName}' not found` },
+          404
+        );
+      }
+      // Re-throw other errors
+      throw error;
     }
 
     // Get deployment history
     try {
-      const deployments = await (cf.workers.scripts.deployments as any).list({
+      // Note: cf.workers.scripts.deployments.list returns a response, not raw JSON
+      const deploymentsResponse = await cf.workers.scripts.deployments.list({
         account_id: accountId,
         script_name: scriptName,
       } as any);
-      status.deployments = deployments.slice(0, 10).map((d: any) => ({
+      const deployments: any = await deploymentsResponse.json();
+      
+      status.deployments = (deployments.result || []).slice(0, 10).map((d: any) => ({
         id: d.id,
         created_on: d.created_on,
         source: d.source,
       }));
-      status.deployment_count = deployments.length;
+      status.deployment_count = deployments.result?.length || 0;
     } catch (error) {
       console.error('Failed to get deployment history:', error);
     }
@@ -724,6 +868,7 @@ deployFlows.delete('/:scriptName', async (c) => {
     const scriptName = c.req.param('scriptName');
     const dispatchNamespace = c.req.query('dispatch_namespace');
 
+    // The SDK call for delete does not return content, so no .json()
     await cf.workers.scripts.delete(scriptName, {
       account_id: accountId,
     });
@@ -732,7 +877,8 @@ deployFlows.delete('/:scriptName', async (c) => {
       success: true,
       message: `Worker '${scriptName}' deleted successfully`,
     });
-  } catch (error: any) {
+  } catch (error: any)
+ {
     return c.json({ success: false, error: error.message }, 500);
   }
 });

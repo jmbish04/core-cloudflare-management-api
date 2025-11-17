@@ -363,7 +363,7 @@ User: "Deploy my worker"
           Automatically infers the HTTP method from action names 
           (e.g., "list" -> GET, "create" -> POST, "delete" -> DELETE). 
           If product or method are omitted, the server will attempt 
-          to infer them. Product names are case-insensitive.
+          to infer them.
           `,
           operationId: 'cloudflare_meta_api_call',
           requestBody: {

@@ -72,7 +72,7 @@ const cfInitMiddleware = async (c: any, next: any) => {
 };
 
 // PATCHED: Token middleware fix for /api/tokens routes
-const apiClientMiddleware = async (c: any, next: any) => {
+const apiClientMiddleware = async (c: Context<{ Bindings: Env; Variables: Variables }>, next: Next) => {
   const urlPath = new URL(c.req.url).pathname;
   const isUserTokenRoute = urlPath.startsWith('/api/tokens');
 

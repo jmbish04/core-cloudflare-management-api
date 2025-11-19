@@ -23,7 +23,16 @@ export interface Env {
   
   // Context Coach Durable Object
   CONTEXT_COACH: DurableObjectNamespace; // Durable Object for context coaching
-  
+
+  // Consultation Session Durable Object
+  CONSULTATION_SESSION: DurableObjectNamespace; // Durable Object for consultation sessions
+
+  // Consultation Queue
+  CONSULTATION_QUEUE?: Queue; // Queue for async consultation processing
+
+  // Consultation KV
+  CONSULTATION_KV?: KVNamespace; // KV for consultation caching
+
   // Workers AI binding (optional)
   AI?: Ai;
 }

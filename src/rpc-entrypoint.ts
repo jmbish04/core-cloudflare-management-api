@@ -90,5 +90,23 @@ export class CloudflareManagerRPC extends WorkerEntrypoint<Env> {
       timestamp: new Date().toISOString(),
     };
   }
+
+  /**
+   * Start a consultation
+   */
+  async startConsultation(prompt: string, session_id?: string): Promise<any> {
+    const { startConsultation } = await import('./services/consultation-agent');
+    const { generateUUID } = await import('./types');
+    const requestId = session_id || generateUUID();
+    return await startConsultation(this.env, { session_id: requestId, prompt });
+  }
+
+  /**
+   * Get consultation status and results
+   */
+  async getConsultation(session_id: string): Promise<any> {
+    const { getConsultation } = await import('./services/consultation-agent');
+    return await getConsultation(this.env, session_id);
+  }
 }
 

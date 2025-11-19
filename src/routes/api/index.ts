@@ -10,6 +10,7 @@ import pagesRouter from './pages';
 import cicdRouter from './cicd';
 import vectorizeRouter from './vectorize';
 import aiRouter from './ai';
+import consultationRouter from './consultation';
 
 const api = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -20,6 +21,7 @@ api.route('/pages', pagesRouter);
 api.route('/cicd', cicdRouter);
 api.route('/vectorize', vectorizeRouter);
 api.route('/ai', aiRouter);
+api.route('/consultation', consultationRouter);
 
 // Mount same routes under /raw/ for backward compatibility and clarity
 api.route('/raw/workers', workersRouter);
@@ -29,6 +31,7 @@ api.route('/raw/pages', pagesRouter);
 api.route('/raw/cicd', cicdRouter);
 api.route('/raw/vectorize', vectorizeRouter);
 api.route('/raw/ai', aiRouter);
+api.route('/raw/consultation', consultationRouter);
 
 /**
  * Meta API Introspection - Discover available products and actions

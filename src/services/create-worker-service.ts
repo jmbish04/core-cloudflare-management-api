@@ -719,7 +719,13 @@ export async function createWorker(
 
     // Get account info
     const accountId = env.CLOUDFLARE_ACCOUNT_ID;
-    const apiClient = new CloudflareApiClient({ apiToken: env.CLOUDFLARE_TOKEN });
+    const apiToken = env.CLOUDFLARE_TOKEN;
+
+    if (!accountId || !apiToken) {
+      throw new Error('CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_TOKEN environment variables must be set.');
+    }
+
+    const apiClient = new CloudflareApiClient({ apiToken });
 
     // Create bindings
     const createdBindings = await createBindings(apiClient, accountId, request.bindings);

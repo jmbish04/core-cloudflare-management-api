@@ -4,12 +4,14 @@
  */
 
 import { consultationMCPTools } from './consultation';
+import { workerCreationMCPTools } from './create-worker';
 
 /**
  * All available MCP tools
  */
 export const allMCPTools = [
   ...consultationMCPTools,
+  ...workerCreationMCPTools,
 ];
 
 /**

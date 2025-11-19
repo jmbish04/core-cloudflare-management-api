@@ -275,33 +275,31 @@ app.post('/mcp', async (c) => {
         const toolName = params.name;
         const toolParams = params.arguments;
 
-        // Check if it's a consultation tool
-        if (toolName.startsWith('consultation.')) {
-          const { getMCPTool } = await import('./mcp/index');
-          const tool = getMCPTool(toolName);
+        // Check if it's an MCP tool from our registry
+        const { getMCPTool } = await import('./mcp/index');
+        const tool = getMCPTool(toolName);
 
-          if (tool) {
-            try {
-              const result = await tool.handler(toolParams, c.env);
-              return c.json({
-                content: [{
-                  type: 'text',
-                  text: JSON.stringify(result, null, 2),
-                }],
-              });
-            } catch (error: any) {
-              return c.json({
-                content: [{
-                  type: 'text',
-                  text: `Error: ${error.message}`,
-                }],
-                isError: true,
-              });
-            }
+        if (tool) {
+          try {
+            const result = await tool.handler(toolParams, c.env);
+            return c.json({
+              content: [{
+                type: 'text',
+                text: JSON.stringify(result, null, 2),
+              }],
+            });
+          } catch (error: any) {
+            return c.json({
+              content: [{
+                type: 'text',
+                text: `Error: ${error.message}`,
+              }],
+              isError: true,
+            });
           }
         }
 
-        // Forward to appropriate internal endpoint
+        // Forward to appropriate internal endpoint for legacy tools
         // In production, you'd make actual API calls here
         return c.json({
           content: [{

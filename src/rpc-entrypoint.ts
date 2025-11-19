@@ -108,5 +108,21 @@ export class CloudflareManagerRPC extends WorkerEntrypoint<Env> {
     const { getConsultation } = await import('./services/consultation-agent');
     return await getConsultation(this.env, session_id);
   }
+
+  /**
+   * Create a new Worker
+   */
+  async createWorker(request: any): Promise<any> {
+    const { createWorker } = await import('./services/create-worker-service');
+    return await createWorker(this.env, request);
+  }
+
+  /**
+   * Validate a Worker creation request
+   */
+  async validateWorkerRequest(request: any): Promise<any> {
+    const { validateWorkerRequest } = await import('./services/create-worker-service');
+    return await validateWorkerRequest(request);
+  }
 }
 

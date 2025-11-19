@@ -339,6 +339,326 @@ function generateWranglerConfig(
 }
 
 /**
+ * Generate help HTML page for the worker
+ */
+function generateHelpPage(
+  projectName: string,
+  type: WorkerType,
+  createdBindings: CreatedBinding[],
+  workerUrl: string
+): string {
+  const kvBindings = createdBindings.filter((b) => b.type === 'kv');
+  const d1Bindings = createdBindings.filter((b) => b.type === 'd1');
+  const r2Bindings = createdBindings.filter((b) => b.type === 'r2');
+  const queueBindings = createdBindings.filter((b) => b.type === 'queue');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${projectName} - Worker Documentation</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+    }
+    header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 3rem 2rem;
+      text-align: center;
+    }
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle {
+      opacity: 0.9;
+      font-size: 1.1rem;
+    }
+    .content {
+      padding: 2rem;
+    }
+    .section {
+      margin-bottom: 2rem;
+    }
+    h2 {
+      color: #667eea;
+      border-bottom: 2px solid #667eea;
+      padding-bottom: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .info-card {
+      background: #f8f9fa;
+      padding: 1.5rem;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+    }
+    .info-card h3 {
+      color: #667eea;
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+    }
+    .info-card p {
+      color: #666;
+      font-size: 0.9rem;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      background: #667eea;
+      color: white;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      margin: 0.25rem;
+    }
+    .binding-list {
+      list-style: none;
+      margin-top: 1rem;
+    }
+    .binding-item {
+      background: #f8f9fa;
+      padding: 1rem;
+      margin-bottom: 0.5rem;
+      border-radius: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .binding-name {
+      font-weight: 600;
+      color: #333;
+    }
+    .binding-type {
+      background: #e9ecef;
+      padding: 0.25rem 0.75rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: #666;
+    }
+    code {
+      background: #f8f9fa;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9rem;
+    }
+    .url {
+      background: #e7f3ff;
+      padding: 1rem;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      word-break: break-all;
+      margin-top: 1rem;
+    }
+    .feature-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .feature-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .feature-icon {
+      width: 24px;
+      height: 24px;
+      background: #667eea;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+    }
+    footer {
+      background: #f8f9fa;
+      padding: 2rem;
+      text-align: center;
+      color: #666;
+      border-top: 1px solid #e9ecef;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 2rem;
+      color: #999;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>⚡ ${projectName}</h1>
+      <p class="subtitle">Cloudflare ${type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} Documentation</p>
+    </header>
+
+    <div class="content">
+      <div class="section">
+        <h2>📡 Worker URL</h2>
+        <div class="url">
+          <a href="https://${workerUrl}" target="_blank" style="color: #667eea; text-decoration: none;">
+            https://${workerUrl}
+          </a>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>🔧 Configuration</h2>
+        <div class="info-grid">
+          <div class="info-card">
+            <h3>Worker Type</h3>
+            <p>${type.replace(/_/g, ' ').toUpperCase()}</p>
+          </div>
+          <div class="info-card">
+            <h3>Workers.dev Enabled</h3>
+            <p>✓ Yes</p>
+          </div>
+          <div class="info-card">
+            <h3>Observability</h3>
+            <p>✓ Enabled</p>
+          </div>
+          <div class="info-card">
+            <h3>Compatibility Date</h3>
+            <p>${new Date().toISOString().split('T')[0]}</p>
+          </div>
+        </div>
+      </div>
+
+      ${createdBindings.length > 0 ? `
+      <div class="section">
+        <h2>🔗 Bindings</h2>
+        ${kvBindings.length > 0 ? `
+          <h3 style="margin-top: 1.5rem; color: #666;">KV Namespaces</h3>
+          <ul class="binding-list">
+            ${kvBindings.map(b => `
+              <li class="binding-item">
+                <span class="binding-name">${b.name.toUpperCase().replace(/-/g, '_')}</span>
+                <span class="binding-type">KV</span>
+              </li>
+            `).join('')}
+          </ul>
+        ` : ''}
+        ${d1Bindings.length > 0 ? `
+          <h3 style="margin-top: 1.5rem; color: #666;">D1 Databases</h3>
+          <ul class="binding-list">
+            ${d1Bindings.map(b => `
+              <li class="binding-item">
+                <span class="binding-name">${b.name.toUpperCase().replace(/-/g, '_')}</span>
+                <span class="binding-type">D1</span>
+              </li>
+            `).join('')}
+          </ul>
+        ` : ''}
+        ${r2Bindings.length > 0 ? `
+          <h3 style="margin-top: 1.5rem; color: #666;">R2 Buckets</h3>
+          <ul class="binding-list">
+            ${r2Bindings.map(b => `
+              <li class="binding-item">
+                <span class="binding-name">${b.name.toUpperCase().replace(/-/g, '_')}</span>
+                <span class="binding-type">R2</span>
+              </li>
+            `).join('')}
+          </ul>
+        ` : ''}
+        ${queueBindings.length > 0 ? `
+          <h3 style="margin-top: 1.5rem; color: #666;">Queues</h3>
+          <ul class="binding-list">
+            ${queueBindings.map(b => `
+              <li class="binding-item">
+                <span class="binding-name">${b.name.toUpperCase().replace(/-/g, '_')}</span>
+                <span class="binding-type">Queue</span>
+              </li>
+            `).join('')}
+          </ul>
+        ` : ''}
+      </div>
+      ` : ''}
+
+      <div class="section">
+        <h2>✨ Features</h2>
+        <div class="feature-list">
+          <div class="feature-item">
+            <div class="feature-icon">✓</div>
+            <span>Global Edge Network</span>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">✓</div>
+            <span>Zero Cold Starts</span>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">✓</div>
+            <span>Automatic Scaling</span>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">✓</div>
+            <span>Built-in Security</span>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">✓</div>
+            <span>Real-time Logs</span>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">✓</div>
+            <span>Analytics Included</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>📚 Resources</h2>
+        <ul style="list-style: none; margin-top: 1rem;">
+          <li style="margin-bottom: 0.5rem;">
+            📖 <a href="https://developers.cloudflare.com/workers/" target="_blank" style="color: #667eea;">Cloudflare Workers Documentation</a>
+          </li>
+          <li style="margin-bottom: 0.5rem;">
+            🔧 <a href="https://developers.cloudflare.com/workers/wrangler/" target="_blank" style="color: #667eea;">Wrangler CLI</a>
+          </li>
+          <li style="margin-bottom: 0.5rem;">
+            💬 <a href="https://discord.gg/cloudflaredev" target="_blank" style="color: #667eea;">Cloudflare Developers Discord</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <footer>
+      <p>Created with ❤️ using Cloudflare Workers</p>
+      <p style="margin-top: 0.5rem; font-size: 0.9rem;">
+        Generated on ${new Date().toISOString().split('T')[0]}
+      </p>
+    </footer>
+  </div>
+</body>
+</html>`;
+}
+
+/**
  * Deploy worker using Cloudflare API
  */
 async function deployWorker(
@@ -404,21 +724,58 @@ export async function createWorker(
     // Create bindings
     const createdBindings = await createBindings(apiClient, accountId, request.bindings);
 
+    // Generate worker URL (before deployment)
+    const workerUrl = `${request.project_name}.hacolby.workers.dev`;
+
+    // Generate help page HTML
+    const helpPageHtml = generateHelpPage(
+      request.project_name,
+      request.type,
+      createdBindings,
+      workerUrl
+    );
+
+    // Determine if we need to add static files
+    const hasExistingStaticFiles = request.static_files && request.static_files.paths.length > 0;
+    const needsStaticFiles = request.type === 'worker_with_static' ||
+                             request.type === 'pages' ||
+                             request.type === 'worker_with_pages' ||
+                             hasExistingStaticFiles;
+
+    // Prepare static files with auto-generated help page
+    let finalStaticFiles: StaticFiles | undefined = request.static_files;
+
+    if (needsStaticFiles || hasExistingStaticFiles) {
+      // Initialize static files if not present
+      if (!finalStaticFiles) {
+        finalStaticFiles = { paths: [], content_base64: [] };
+      }
+
+      // Determine help page path: /help.html if other files exist, /index.html if not
+      const helpPagePath = hasExistingStaticFiles ? 'public/help.html' : 'public/index.html';
+
+      // Add help page to static files
+      finalStaticFiles = {
+        paths: [...finalStaticFiles.paths, helpPagePath],
+        content_base64: [...finalStaticFiles.content_base64, Buffer.from(helpPageHtml).toString('base64')],
+      };
+    }
+
     // Generate wrangler config
     const wranglerConfig = generateWranglerConfig(
       request.project_name,
       request.type,
       createdBindings,
-      !!request.static_files
+      !!finalStaticFiles
     );
 
     // Deploy the worker
-    const workerUrl = await deployWorker(
+    await deployWorker(
       apiClient,
       accountId,
       request.project_name,
       request.javascript_files,
-      request.static_files
+      finalStaticFiles
     );
 
     return {
@@ -427,6 +784,7 @@ export async function createWorker(
       wrangler_config: wranglerConfig,
       details: {
         created_bindings: createdBindings,
+        help_page: hasExistingStaticFiles ? `https://${workerUrl}/help.html` : `https://${workerUrl}/`,
       },
     };
   } catch (error: any) {

@@ -108,6 +108,16 @@ createWorkerRouter.get('/', async (c) => {
       static_files: 'Optional, HTML and other assets',
       bindings: 'Optional, KV, D1, R2, Queues, Workflows',
     },
+    features: {
+      auto_help_page: 'Automatically generates a beautiful help page served from ASSETS binding',
+      help_page_location: {
+        with_static_files: 'Available at /help.html',
+        without_static_files: 'Available at / (landing page)',
+      },
+      observability: 'Always enabled by default',
+      workers_dev: 'Automatic *.workers.dev subdomain',
+      html_validation: 'Blocks inline HTML in JavaScript files',
+    },
   });
 });
 

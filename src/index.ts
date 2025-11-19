@@ -71,10 +71,20 @@ const cfInitMiddleware = async (c: any, next: any) => {
   await next();
 };
 
-const apiClientMiddleware = async (c: any, next: any) => {
-  const apiToken = c.env.CLOUDFLARE_TOKEN;
+// PATCHED: Token middleware fix for /api/tokens routes
+const apiClientMiddleware = async (c: Context<{ Bindings: Env; Variables: Variables }>, next: Next) => {
+  const urlPath = new URL(c.req.url).pathname;
+  const isUserTokenRoute = urlPath.startsWith('/api/tokens');
+
+  const apiToken = isUserTokenRoute
+    ? c.env.CLOUDFLARE_USER_TOKEN
+    : c.env.CLOUDFLARE_TOKEN;
+
   if (!apiToken) {
-    return c.json({ success: false, error: 'CLOUDFLARE_TOKEN is not configured' }, 500);
+    const missingVar = isUserTokenRoute
+      ? 'CLOUDFLARE_USER_TOKEN'
+      : 'CLOUDFLARE_TOKEN';
+    return c.json({ success: false, error: `${missingVar} is not configured` }, 500);
   }
 
   if (!c.get('apiClient')) {

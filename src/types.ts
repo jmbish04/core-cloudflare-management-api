@@ -6,6 +6,7 @@ export interface Env {
   // Secret Store Bindings
   CLOUDFLARE_ACCOUNT_ID: string; // Cloudflare Account ID
   CLOUDFLARE_TOKEN: string; // Worker's own Cloudflare API token
+  CLOUDFLARE_USER_TOKEN: string; // User-level Cloudflare API token for /user/tokens/* endpoints
   CLIENT_AUTH_TOKEN: string; // Auth token for incoming requests
   MANAGED_SECRETS_STORE: string; // Secret Store ID for managed token storage
 

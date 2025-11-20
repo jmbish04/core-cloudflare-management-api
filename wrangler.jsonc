@@ -90,13 +90,18 @@
 			{
 				"binding": "CONSULTATION_QUEUE",
 				"queue": "consultation-tasks"
+			},
+			{
+				"binding": "CONSULTATION_DLQ",
+				"queue": "consultation-dlq"
 			}
 		],
 		"consumers": [
 			{
 				"queue": "consultation-tasks",
 				"max_batch_size": 10,
-				"max_batch_timeout": 30
+				"max_batch_timeout": 30,
+				"dead_letter_queue": "consultation-dlq"
 			}
 		]
 	}

@@ -20,7 +20,8 @@ export interface Env {
   BASE_URL?: string;
   OBSERVABILITY_AE?: AnalyticsEngineDataset;
   WORKER_URL?: string;
-  
+  WORKERS_DEV_DOMAIN?: string; // Custom workers.dev subdomain (defaults to 'hacolby.workers.dev')
+
   // Context Coach Durable Object
   CONTEXT_COACH: DurableObjectNamespace; // Durable Object for context coaching
 

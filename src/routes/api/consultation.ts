@@ -11,12 +11,37 @@ const consultation = new Hono<{ Bindings: Env; Variables: Variables }>();
 consultation.post('/', async (c) => {
   try {
     const body = await c.req.json();
+
+    // Validate body is an object
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return c.json({
+        success: false,
+        error: 'Request body must be a JSON object',
+      }, 400);
+    }
+
     const { prompt, session_id } = body;
 
+    // Validate prompt
     if (!prompt || typeof prompt !== 'string') {
       return c.json({
         success: false,
         error: 'prompt is required and must be a string',
+      }, 400);
+    }
+
+    if (prompt.length > 10000) {
+      return c.json({
+        success: false,
+        error: 'prompt must be 10000 characters or less',
+      }, 400);
+    }
+
+    // Validate session_id if provided
+    if (session_id && typeof session_id !== 'string') {
+      return c.json({
+        success: false,
+        error: 'session_id must be a string',
       }, 400);
     }
 
@@ -28,6 +53,11 @@ consultation.post('/', async (c) => {
       session_id: requestId,
       prompt,
     });
+
+    // Check if consultation started successfully
+    if (!result.success) {
+      throw new Error(`Failed to start consultation for session ${requestId}`);
+    }
 
     return c.json({
       success: true,

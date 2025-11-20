@@ -112,7 +112,7 @@ export class CloudflareManagerRPC extends WorkerEntrypoint<Env> {
   /**
    * Create a new Worker
    */
-  async createWorker(request: any): Promise<any> {
+  async createWorker(request: import('./services/create-worker-service').CreateWorkerRequest): Promise<import('./services/create-worker-service').CreateWorkerResponse> {
     const { createWorker } = await import('./services/create-worker-service');
     return await createWorker(this.env, request);
   }
@@ -120,7 +120,7 @@ export class CloudflareManagerRPC extends WorkerEntrypoint<Env> {
   /**
    * Validate a Worker creation request
    */
-  async validateWorkerRequest(request: any): Promise<any> {
+  async validateWorkerRequest(request: import('./services/create-worker-service').CreateWorkerRequest): Promise<{ valid: boolean; errors?: string[] }> {
     const { validateWorkerRequest } = await import('./services/create-worker-service');
     return await validateWorkerRequest(request);
   }

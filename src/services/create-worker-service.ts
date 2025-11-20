@@ -1,5 +1,5 @@
 import type { Env } from '../types';
-import { CloudflareApiClient } from '../routes/api/apiClient';
+import { CloudflareApiClient, CloudflareApiResponse } from '../routes/api/apiClient';
 
 /**
  * Worker Creation Service
@@ -133,7 +133,7 @@ async function createKVNamespace(
   name: string
 ): Promise<CreatedBinding> {
   try {
-    const response = await apiClient.post(
+    const response = await apiClient.post<CloudflareApiResponse<{ id: string }>>(
       `/accounts/${accountId}/storage/kv/namespaces`,
       { title: name }
     );
@@ -157,7 +157,7 @@ async function createD1Database(
   name: string
 ): Promise<CreatedBinding> {
   try {
-    const response = await apiClient.post(
+    const response = await apiClient.post<CloudflareApiResponse<{ uuid: string }>>(
       `/accounts/${accountId}/d1/database`,
       { name }
     );
@@ -181,7 +181,7 @@ async function createR2Bucket(
   name: string
 ): Promise<CreatedBinding> {
   try {
-    const response = await apiClient.post(
+    const response = await apiClient.post<CloudflareApiResponse<any>>(
       `/accounts/${accountId}/r2/buckets`,
       { name }
     );
@@ -205,7 +205,7 @@ async function createQueue(
   name: string
 ): Promise<CreatedBinding> {
   try {
-    const response = await apiClient.post(
+    const response = await apiClient.post<CloudflareApiResponse<{ queue_id: string }>>(
       `/accounts/${accountId}/queues`,
       { queue_name: name }
     );
@@ -276,11 +276,12 @@ function generateWranglerConfig(
   projectName: string,
   type: WorkerType,
   createdBindings: CreatedBinding[],
-  hasStaticFiles: boolean
+  hasStaticFiles: boolean,
+  mainFile?: string
 ): string {
   const config: any = {
     name: projectName,
-    main: 'src/index.js',
+    main: mainFile || 'src/index.js',
     compatibility_date: new Date().toISOString().split('T')[0],
     workers_dev: true,
     observability: {
@@ -717,6 +718,14 @@ export async function createWorker(
     validateJavaScriptFiles(request.javascript_files);
     validateStaticFiles(request.static_files);
 
+    // Validate required environment variables
+    if (!env.CLOUDFLARE_ACCOUNT_ID) {
+      throw new Error('CLOUDFLARE_ACCOUNT_ID environment variable is required but not set');
+    }
+    if (!env.CLOUDFLARE_TOKEN) {
+      throw new Error('CLOUDFLARE_TOKEN environment variable is required but not set');
+    }
+
     // Get account info
     const accountId = env.CLOUDFLARE_ACCOUNT_ID;
     const apiToken = env.CLOUDFLARE_TOKEN;
@@ -731,7 +740,9 @@ export async function createWorker(
     const createdBindings = await createBindings(apiClient, accountId, request.bindings);
 
     // Generate worker URL (before deployment)
-    const workerUrl = `${request.project_name}.hacolby.workers.dev`;
+    // Use custom domain from env or default to hacolby.workers.dev
+    const workersDomain = env.WORKERS_DEV_DOMAIN || 'hacolby.workers.dev';
+    const workerUrl = `${request.project_name}.${workersDomain}`;
 
     // Generate help page HTML
     const helpPageHtml = generateHelpPage(
@@ -772,7 +783,8 @@ export async function createWorker(
       request.project_name,
       request.type,
       createdBindings,
-      !!finalStaticFiles
+      !!finalStaticFiles,
+      request.javascript_files.paths[0] // Use first JS file as main
     );
 
     // Deploy the worker

@@ -66,6 +66,7 @@ export class ConsultationSessionDO extends DurableObject {
           session_id: this.ctx.id.toString(),
         });
       } catch (error: any) {
+        console.error('Error starting consultation:', error, error.stack);
         return Response.json({ error: error.message }, { status: 500 });
       }
     }
@@ -73,12 +74,16 @@ export class ConsultationSessionDO extends DurableObject {
     // Get consultation status
     if (request.method === 'GET' && url.pathname.startsWith('/status')) {
       try {
-        const status = await this.ctx.storage.get('status') as string;
-        const prompt = await this.ctx.storage.get('prompt') as string;
-        const updates = await this.ctx.storage.get('updates') as any[];
-        const result = await this.ctx.storage.get('result');
-        const created_at = await this.ctx.storage.get('created_at') as string;
-        const completed_at = await this.ctx.storage.get('completed_at') as string;
+        // Batch storage.get() calls for better performance
+        const keys = ['status', 'prompt', 'updates', 'result', 'created_at', 'completed_at'];
+        const values = await this.ctx.storage.get(keys);
+
+        const status = values.get('status') as string;
+        const prompt = values.get('prompt') as string;
+        const updates = values.get('updates') as any[];
+        const result = values.get('result');
+        const created_at = values.get('created_at') as string;
+        const completed_at = values.get('completed_at') as string;
 
         return Response.json({
           success: true,
@@ -91,6 +96,7 @@ export class ConsultationSessionDO extends DurableObject {
           completed_at,
         });
       } catch (error: any) {
+        console.error('Error getting consultation status:', error, error.stack);
         return Response.json({ error: error.message }, { status: 500 });
       }
     }
@@ -98,7 +104,16 @@ export class ConsultationSessionDO extends DurableObject {
     // Update consultation progress (called by the agent)
     if (request.method === 'POST' && url.pathname === '/update') {
       try {
-        const update = await request.json();
+        const update = await request.json() as any;
+
+        // Validate update body
+        if (!update || typeof update !== 'object') {
+          return Response.json({ error: 'Invalid update body: must be an object' }, { status: 400 });
+        }
+
+        if (!update.type || typeof update.type !== 'string') {
+          return Response.json({ error: 'Invalid update body: type is required and must be a string' }, { status: 400 });
+        }
 
         // Get existing updates
         const updates = (await this.ctx.storage.get('updates') as any[]) || [];
@@ -118,6 +133,7 @@ export class ConsultationSessionDO extends DurableObject {
 
         return Response.json({ success: true });
       } catch (error: any) {
+        console.error('Error updating consultation:', error, error.stack);
         return Response.json({ error: error.message }, { status: 500 });
       }
     }
@@ -125,7 +141,7 @@ export class ConsultationSessionDO extends DurableObject {
     // Complete consultation (called by the agent)
     if (request.method === 'POST' && url.pathname === '/complete') {
       try {
-        const { result, status } = await request.json();
+        const { result, status } = await request.json() as any;
 
         await this.ctx.storage.put('status', status || 'completed');
         await this.ctx.storage.put('result', result);
@@ -141,6 +157,7 @@ export class ConsultationSessionDO extends DurableObject {
 
         return Response.json({ success: true });
       } catch (error: any) {
+        console.error('Error completing consultation:', error, error.stack);
         return Response.json({ error: error.message }, { status: 500 });
       }
     }
@@ -164,8 +181,18 @@ export class ConsultationSessionDO extends DurableObject {
         if (data.type === 'ping') {
           webSocket.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
         }
-      } catch (error) {
-        console.error('Error handling WebSocket message:', error);
+      } catch (error: any) {
+        console.error('Error handling WebSocket message:', error, error.stack);
+        // Send error message to client
+        try {
+          webSocket.send(JSON.stringify({
+            type: 'error',
+            error: 'Failed to process message',
+            message: error.message,
+          }));
+        } catch (sendError) {
+          console.error('Failed to send error to WebSocket client:', sendError);
+        }
       }
     });
 
@@ -173,8 +200,18 @@ export class ConsultationSessionDO extends DurableObject {
       this.sessions.delete(webSocket);
     });
 
-    webSocket.addEventListener('error', () => {
+    webSocket.addEventListener('error', (event: any) => {
+      console.error('WebSocket error:', event);
       this.sessions.delete(webSocket);
+      // Try to send error to client before closing
+      try {
+        webSocket.send(JSON.stringify({
+          type: 'error',
+          error: 'WebSocket error occurred',
+        }));
+      } catch (sendError) {
+        console.error('Failed to send error to WebSocket client:', sendError);
+      }
     });
 
     webSocket.accept();

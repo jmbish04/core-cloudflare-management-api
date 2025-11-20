@@ -144,7 +144,7 @@ export class ConsultationSessionDO extends DurableObject {
     // Complete consultation (called by the agent)
     if (request.method === 'POST' && url.pathname === '/complete') {
       try {
-        const { result, status } = await request.json() as any;
+        const { result, status } = await request.json() as { result: unknown; status?: string };
 
         await this.ctx.storage.put('status', status || 'completed');
         await this.ctx.storage.put('result', result);

@@ -20,10 +20,21 @@ export interface Env {
   BASE_URL?: string;
   OBSERVABILITY_AE?: AnalyticsEngineDataset;
   WORKER_URL?: string;
-  
+  WORKERS_DEV_DOMAIN?: string; // Custom workers.dev subdomain (defaults to 'hacolby.workers.dev')
+
   // Context Coach Durable Object
   CONTEXT_COACH: DurableObjectNamespace; // Durable Object for context coaching
-  
+
+  // Consultation Session Durable Object
+  CONSULTATION_SESSION: DurableObjectNamespace; // Durable Object for consultation sessions
+
+  // Consultation Queue
+  CONSULTATION_QUEUE?: Queue; // Queue for async consultation processing
+  CONSULTATION_DLQ?: Queue; // Dead Letter Queue for failed consultation messages
+
+  // Consultation KV
+  CONSULTATION_KV?: KVNamespace; // KV for consultation caching
+
   // Workers AI binding (optional)
   AI?: Ai;
 }

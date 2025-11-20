@@ -15,6 +15,7 @@ import { autoTuneThreshold } from './services/coachTelemetry';
 // Export Durable Objects
 export { LogTailingDO } from './logTailingDO';
 export { ContextCoachDO } from './contextCoachDO';
+export { ConsultationSessionDO } from './consultationSessionDO';
 
 // Export RPC Entrypoint for Service Bindings
 export { CloudflareManagerRPC } from './rpc-entrypoint';
@@ -226,6 +227,10 @@ app.post('/mcp', async (c) => {
 
     switch (method) {
       case 'tools/list':
+        // Import MCP tools
+        const { listMCPTools } = await import('./mcp/index');
+        const mcpTools = listMCPTools();
+
         return c.json({
           tools: [
             {
@@ -261,6 +266,7 @@ app.post('/mcp', async (c) => {
                 required: ['projectName'],
               },
             },
+            ...mcpTools,
           ],
         });
 
@@ -269,7 +275,31 @@ app.post('/mcp', async (c) => {
         const toolName = params.name;
         const toolParams = params.arguments;
 
-        // Forward to appropriate internal endpoint
+        // Check if it's an MCP tool from our registry
+        const { getMCPTool } = await import('./mcp/index');
+        const tool = getMCPTool(toolName);
+
+        if (tool) {
+          try {
+            const result = await tool.handler(toolParams, c.env);
+            return c.json({
+              content: [{
+                type: 'text',
+                text: JSON.stringify(result, null, 2),
+              }],
+            });
+          } catch (error: any) {
+            return c.json({
+              content: [{
+                type: 'text',
+                text: `Error: ${error.message}`,
+              }],
+              isError: true,
+            });
+          }
+        }
+
+        // Forward to appropriate internal endpoint for legacy tools
         // In production, you'd make actual API calls here
         return c.json({
           content: [{
@@ -456,6 +486,23 @@ export const tail = async (
     }
   } catch (error) {
     console.error('Error in tail handler:', error);
+  }
+};
+
+/**
+ * Queue Consumer for Consultation Tasks
+ * Processes consultation requests from CONSULTATION_QUEUE
+ */
+export const queue = async (
+  batch: MessageBatch<any>,
+  env: Env,
+  ctx: ExecutionContext
+) => {
+  try {
+    const { handleConsultationQueueMessage } = await import('./services/consultation-workflow');
+    await handleConsultationQueueMessage(batch, env);
+  } catch (error) {
+    console.error('Error in consultation queue consumer:', error);
   }
 };
 

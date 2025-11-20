@@ -30,6 +30,11 @@
 			"binding": "KV",
 			"id": "a63d362c8c3349eb85ffc68fc4faeb5c",
 			"remote": true
+		},
+		{
+			"binding": "CONSULTATION_KV",
+			"id": "consultation_kv_preview",
+			"preview_id": "consultation_kv_preview"
 		}
 	],
 	"analytics_engine_datasets": [
@@ -43,10 +48,14 @@
 				"name": "LOG_TAILING_DO",
 				"class_name": "LogTailingDO"
 			},
-      {
-        "name": "CONTEXT_COACH",
-        "class_name": "ContextCoachDO"
-      }      
+			{
+				"name": "CONTEXT_COACH",
+				"class_name": "ContextCoachDO"
+			},
+			{
+				"name": "CONSULTATION_SESSION",
+				"class_name": "ConsultationSessionDO"
+			}
 		]
 	},
 	"migrations": [
@@ -54,7 +63,13 @@
 			"tag": "v1",
 			"new_sqlite_classes": [
 				"LogTailingDO",
-        "ContextCoachDO"
+				"ContextCoachDO"
+			]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": [
+				"ConsultationSessionDO"
 			]
 		}
 	],
@@ -67,6 +82,27 @@
 		"crons": [
 			"0 */6 * * *",
 			"0 0 * * *"
+		]
+	},
+
+	"queues": {
+		"producers": [
+			{
+				"binding": "CONSULTATION_QUEUE",
+				"queue": "consultation-tasks"
+			},
+			{
+				"binding": "CONSULTATION_DLQ",
+				"queue": "consultation-dlq"
+			}
+		],
+		"consumers": [
+			{
+				"queue": "consultation-tasks",
+				"max_batch_size": 10,
+				"max_batch_timeout": 30,
+				"dead_letter_queue": "consultation-dlq"
+			}
 		]
 	}
 

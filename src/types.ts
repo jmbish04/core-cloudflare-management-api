@@ -30,7 +30,6 @@ export interface Env {
 
   // Consultation Queue
   CONSULTATION_QUEUE?: Queue; // Queue for async consultation processing
-  CONSULTATION_DLQ?: Queue; // Dead Letter Queue for failed consultation messages
 
   // Consultation KV
   CONSULTATION_KV?: KVNamespace; // KV for consultation caching

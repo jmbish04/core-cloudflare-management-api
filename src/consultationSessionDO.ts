@@ -115,14 +115,15 @@ export class ConsultationSessionDO extends DurableObject {
           return Response.json({ error: 'Invalid update body: type is required and must be a string' }, { status: 400 });
         }
 
-        // Get existing updates
-        const updates = (await this.ctx.storage.get('updates') as any[]) || [];
-        updates.push({
-          ...update,
-          timestamp: new Date().toISOString(),
+        // Use blockConcurrencyWhile to ensure atomic updates
+        await this.ctx.storage.blockConcurrencyWhile(async () => {
+          const updates = (await this.ctx.storage.get('updates') as any[]) || [];
+          updates.push({
+            ...update,
+            timestamp: new Date().toISOString(),
+          });
+          await this.ctx.storage.put('updates', updates);
         });
-
-        await this.ctx.storage.put('updates', updates);
 
         // Broadcast to connected clients
         this.broadcast({

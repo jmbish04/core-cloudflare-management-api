@@ -38,10 +38,12 @@ export class ConsultationSessionDO extends DurableObject {
         }
 
         // Store initial state
-        await this.ctx.storage.put('prompt', prompt);
-        await this.ctx.storage.put('status', 'in-progress');
-        await this.ctx.storage.put('created_at', new Date().toISOString());
-        await this.ctx.storage.put('updates', []);
+        await this.ctx.storage.put({
+          prompt,
+          status: 'in-progress',
+          created_at: new Date().toISOString(),
+          updates: [],
+        });
 
         // Enqueue the consultation job
         if (this.env.CONSULTATION_QUEUE) {

@@ -90,10 +90,6 @@
 			{
 				"binding": "CONSULTATION_QUEUE",
 				"queue": "consultation-tasks"
-			},
-			{
-				"binding": "CONSULTATION_DLQ",
-				"queue": "consultation-dlq"
 			}
 		],
 		"consumers": [

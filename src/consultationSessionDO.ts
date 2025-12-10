@@ -118,7 +118,7 @@ export class ConsultationSessionDO extends DurableObject {
         }
 
         // Use blockConcurrencyWhile to ensure atomic updates
-        await this.ctx.storage.blockConcurrencyWhile(async () => {
+        await this.ctx.blockConcurrencyWhile(async () => {
           const updates = (await this.ctx.storage.get('updates') as any[]) || [];
           updates.push({
             ...update,

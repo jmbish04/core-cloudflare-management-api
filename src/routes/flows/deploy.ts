@@ -63,19 +63,28 @@ deployFlows.post('/from-content', async (c) => {
       if (error.status === 404) {
         // Subdomain doesn't exist, create it.
         // !! CRUCIAL: This is a one-time operation for the account.
-        // !! You MUST replace this placeholder with your desired subdomain.
-        const desiredSubdomain = "hacolby"; 
+        const desiredSubdomain = c.env.WORKERS_DEV_SUBDOMAIN || "hacolby";
         
-        if (desiredSubdomain === "your-account-subdomain") {
-            throw new Error("Subdomain check failed: 'your-account-subdomain' is a placeholder. Please edit src/routes/flows/deploy.ts with your desired account subdomain.");
+        if (!c.env.WORKERS_DEV_SUBDOMAIN) {
+          console.warn('WORKERS_DEV_SUBDOMAIN not set, using default: hacolby');
         }
 
         console.log(`Attempting to create workers.dev subdomain: ${desiredSubdomain}`);
-        await cf.workers.subdomains.create({
-          account_id: accountId,
-          body: { subdomain: desiredSubdomain }
-        });
-        result.steps_completed.push('subdomain_created');
+        try {
+          await (cf.workers.subdomains as any).create({
+            account_id: accountId,
+            body: { subdomain: desiredSubdomain }
+          });
+          result.steps_completed.push('subdomain_created');
+        } catch (createError: any) {
+          // Gracefully handle "Subdomain already exists" errors
+          if (createError.message?.includes('already exists') || createError.message?.includes('already taken')) {
+            console.log(`Subdomain '${desiredSubdomain}' already exists, continuing...`);
+            result.steps_completed.push('subdomain_already_exists');
+          } else {
+            throw createError;
+          }
+        }
       } else {
         // A different error occurred (e.g., auth)
         throw new Error(`Failed to verify workers.dev subdomain: ${error.message}`);
@@ -205,15 +214,27 @@ deployFlows.post('/from-canvas', async (c) => {
       result.steps_completed.push('subdomain_verified');
     } catch (error: any) {
       if (error.status === 404) {
-        const desiredSubdomain = "hacolby"; // !! MUST BE CHANGED
-        if (desiredSubdomain === "your-account-subdomain") {
-            throw new Error("Subdomain check failed: 'your-account-subdomain' is a placeholder. Please edit src/routes/flows/deploy.ts with your desired account subdomain.");
+        const desiredSubdomain = c.env.WORKERS_DEV_SUBDOMAIN || "hacolby";
+        
+        if (!c.env.WORKERS_DEV_SUBDOMAIN) {
+          console.warn('WORKERS_DEV_SUBDOMAIN not set, using default: hacolby');
         }
-        await cf.workers.subdomains.create({
-          account_id: accountId,
-          body: { subdomain: desiredSubdomain }
-        });
-        result.steps_completed.push('subdomain_created');
+
+        try {
+          await (cf.workers.subdomains as any).create({
+            account_id: accountId,
+            body: { subdomain: desiredSubdomain }
+          });
+          result.steps_completed.push('subdomain_created');
+        } catch (createError: any) {
+          // Gracefully handle "Subdomain already exists" errors
+          if (createError.message?.includes('already exists') || createError.message?.includes('already taken')) {
+            console.log(`Subdomain '${desiredSubdomain}' already exists, continuing...`);
+            result.steps_completed.push('subdomain_already_exists');
+          } else {
+            throw createError;
+          }
+        }
       } else {
         throw new Error(`Failed to verify workers.dev subdomain: ${error.message}`);
       }
@@ -414,15 +435,27 @@ deployFlows.post('/with-config', async (c) => {
       result.steps_completed.push('subdomain_verified');
     } catch (error: any) {
       if (error.status === 404) {
-        const desiredSubdomain = "hacolby"; // !! MUST BE CHANGED
-        if (desiredSubdomain === "your-account-subdomain") {
-            throw new Error("Subdomain check failed: 'your-account-subdomain' is a placeholder. Please edit src/routes/flows/deploy.ts with your desired account subdomain.");
+        const desiredSubdomain = c.env.WORKERS_DEV_SUBDOMAIN || "hacolby";
+        
+        if (!c.env.WORKERS_DEV_SUBDOMAIN) {
+          console.warn('WORKERS_DEV_SUBDOMAIN not set, using default: hacolby');
         }
-        await cf.workers.subdomains.create({
-          account_id: accountId,
-          body: { subdomain: desiredSubdomain }
-        });
-        result.steps_completed.push('subdomain_created');
+
+        try {
+          await (cf.workers.subdomains as any).create({
+            account_id: accountId,
+            body: { subdomain: desiredSubdomain }
+          });
+          result.steps_completed.push('subdomain_created');
+        } catch (createError: any) {
+          // Gracefully handle "Subdomain already exists" errors
+          if (createError.message?.includes('already exists') || createError.message?.includes('already taken')) {
+            console.log(`Subdomain '${desiredSubdomain}' already exists, continuing...`);
+            result.steps_completed.push('subdomain_already_exists');
+          } else {
+            throw createError;
+          }
+        }
       } else {
         throw new Error(`Failed to verify workers.dev subdomain: ${error.message}`);
       }
@@ -824,7 +857,7 @@ deployFlows.get('/status/:scriptName', async (c) => {
     // Get deployment history
     try {
       // Note: cf.workers.scripts.deployments.list returns a response, not raw JSON
-      const deploymentsResponse = await cf.workers.scripts.deployments.list({
+      const deploymentsResponse = await (cf.workers.scripts.deployments as any).list({
         account_id: accountId,
         script_name: scriptName,
       } as any);

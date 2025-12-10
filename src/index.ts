@@ -20,6 +20,9 @@ export { ConsultationSessionDO } from './consultationSessionDO';
 // Export RPC Entrypoint for Service Bindings
 export { CloudflareManagerRPC } from './rpc-entrypoint';
 
+// Export Workflow Entrypoints
+export { ProvisioningWorkflow } from './workflows/provision';
+
 // Create Hono app
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -50,20 +53,19 @@ const authMiddleware = async (c: any, next: any) => {
 /**
  * Cloudflare SDK Initialization Middleware
  * Initializes SDK with worker's own CLOUDFLARE_TOKEN
+ * 
+ * OPTIMIZATION: Cloudflare client and AI instances are initialized once per request
+ * and stored in context (c.set) to avoid re-instantiating heavy objects.
+ * This follows the singleton-per-request pattern for optimal performance.
  */
 const cfInitMiddleware = async (c: any, next: any) => {
-  // Temporarily log the types of all secrets to debug the binding issue
-  // console.log('--- Secret Binding Types ---');
-  // console.log('typeof c.env.CLOUDFLARE_ACCOUNT_ID:', typeof c.env.CLOUDFLARE_ACCOUNT_ID);
-  // console.log('typeof c.env.CLOUDFLARE_TOKEN:', typeof c.env.CLOUDFLARE_TOKEN);
-  // console.log('typeof c.env.CLIENT_AUTH_TOKEN:', typeof c.env.CLIENT_AUTH_TOKEN);
-  // console.log('--------------------------');
-
+  // Initialize Cloudflare SDK client (once per request)
   const cf = new Cloudflare({ apiToken: c.env.CLOUDFLARE_TOKEN });
 
   // Extract account ID from environment
   const accountId = c.env.CLOUDFLARE_ACCOUNT_ID;
 
+  // Store in context for reuse throughout the request lifecycle
   c.set('cf', cf);
   c.set('accountId', accountId);
   c.set('startTime', Date.now());
@@ -73,7 +75,7 @@ const cfInitMiddleware = async (c: any, next: any) => {
 };
 
 // PATCHED: Token middleware fix for /api/tokens routes
-const apiClientMiddleware = async (c: Context<{ Bindings: Env; Variables: Variables }>, next: Next) => {
+const apiClientMiddleware = async (c: any, next: any) => {
   const urlPath = new URL(c.req.url).pathname;
   const isUserTokenRoute = urlPath.startsWith('/api/tokens');
 
@@ -317,58 +319,141 @@ app.post('/mcp', async (c) => {
 });
 
 /**
- * AI Agent Endpoint
- * Natural language interface with cloudflare-docs integration
+ * AI Agent Endpoint with ReAct Loop
+ * Uses Llama 3 for reasoning and tool execution
  */
 app.post('/agent', async (c) => {
   try {
-    const { prompt } = await c.req.json();
+    const { prompt, conversationHistory = [] } = await c.req.json();
+    
+    // Check if AI binding is available
+    if (!c.env.AI) {
+      return c.json({ 
+        success: false, 
+        error: 'AI binding not configured. Please add AI binding to wrangler.jsonc' 
+      }, 500);
+    }
+
     const cf = c.get('cf');
     const accountId = c.get('accountId');
+    const { listMCPTools, getMCPTool } = await import('./mcp/index');
+    const tools = listMCPTools();
 
-    // Basic intent detection (in production, use Workers AI or external LLM)
-    const promptLower = prompt.toLowerCase();
+    // Build system prompt with available tools
+    const systemPrompt = `You are an AI assistant that helps manage Cloudflare infrastructure.
+
+You have access to the following tools:
+${tools.map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
+
+When you need to use a tool, respond with a JSON object in this format:
+{
+  "tool": "tool_name",
+  "arguments": { ...tool arguments... },
+  "reasoning": "Why you're using this tool"
+}
+
+After receiving tool results, provide a natural language response to the user.
+
+Always be helpful, concise, and accurate. If you're unsure, ask for clarification.`;
+
+    // ReAct Loop - Maximum 5 iterations to prevent infinite loops
+    const maxIterations = 5;
+    let iteration = 0;
     const actions: any[] = [];
-    let response = '';
+    let finalResponse = '';
 
-    if (promptLower.includes('create') && promptLower.includes('token')) {
-      // Token creation flow
-      // In production, agent would:
-      // 1. Use cloudflare-docs MCP to lookup permissions
-      // 2. Determine exact permissions needed
-      // 3. Call /flows/token/create
-      response = `To create a token, I need to know:
-1. What will this token be used for?
-2. Which resources does it need access to?
-3. Should it have an expiration (TTL)?
+    // Build conversation context
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...conversationHistory,
+      { role: 'user', content: prompt },
+    ];
 
-I can use the cloudflare-docs to determine the exact permissions needed. Please provide more details about the token's purpose.`;
-    } else if (promptLower.includes('list') && promptLower.includes('worker')) {
-      const workers = await cf.workers.scripts.list({ account_id: accountId });
-      console.log(JSON.stringify(workers));
-      actions.push({ type: 'list_workers', result: workers });
-      const workerCount = Array.isArray(workers.result) ? workers.result.length : 0;
-      response = `Found ${workerCount} workers in your account.`;
-    } else {
-      response = `I can help you manage your Cloudflare infrastructure. I can:
+    while (iteration < maxIterations) {
+      iteration++;
 
-- Create managed API tokens (with secure storage and auditing)
-- List and manage Workers, Pages, and storage resources
-- Create complete project stacks with bindings
-- Setup CI/CD pipelines
-- And more...
+      // Call Llama 3 model
+      const aiResponse = await c.env.AI.run('@cf/meta/llama-3-8b-instruct', {
+        messages,
+        max_tokens: 512,
+      });
 
-What would you like to do?`;
+      const responseText = aiResponse.response || '';
+      
+      // Check if the response contains a tool call (JSON format)
+      let toolCall = null;
+      try {
+        // Try to extract JSON from the response - look for complete JSON objects
+        const jsonMatch = responseText.match(/\{[\s\S]*?\}(?=\s|$)/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          // Validate it has the expected structure for a tool call
+          if (parsed.tool && typeof parsed.tool === 'string') {
+            toolCall = parsed;
+          }
+        }
+      } catch (e) {
+        // Not a valid tool call, treat as final response
+      }
+
+      if (toolCall && toolCall.tool) {
+        // Execute the tool
+        const tool = getMCPTool(toolCall.tool);
+        
+        if (!tool) {
+          messages.push({ 
+            role: 'assistant', 
+            content: `Error: Tool '${toolCall.tool}' not found. Available tools: ${tools.map(t => t.name).join(', ')}` 
+          });
+          continue;
+        }
+
+        try {
+          const toolResult = await tool.handler(toolCall.arguments || {}, c.env);
+          
+          actions.push({
+            tool: toolCall.tool,
+            arguments: toolCall.arguments,
+            reasoning: toolCall.reasoning,
+            result: toolResult,
+          });
+
+          // Add tool result to conversation
+          messages.push({ 
+            role: 'assistant', 
+            content: `Used tool: ${toolCall.tool}` 
+          });
+          messages.push({ 
+            role: 'user', 
+            content: `Tool result: ${JSON.stringify(toolResult)}. Now provide a natural language response to the user.` 
+          });
+        } catch (error: any) {
+          messages.push({ 
+            role: 'assistant', 
+            content: `Error executing tool ${toolCall.tool}: ${error.message}` 
+          });
+        }
+      } else {
+        // No tool call, this is the final response
+        finalResponse = responseText;
+        break;
+      }
+    }
+
+    if (iteration >= maxIterations && !finalResponse) {
+      finalResponse = 'I apologize, but I reached the maximum number of reasoning steps. Please try rephrasing your request or breaking it into smaller tasks.';
     }
 
     return c.json({
       success: true,
       result: {
-        message: response,
+        message: finalResponse,
         actions,
+        iterations: iteration,
       },
     });
   } catch (error: any) {
+    console.error('Agent error:', error);
     return c.json({ success: false, error: error.message }, 500);
   }
 });

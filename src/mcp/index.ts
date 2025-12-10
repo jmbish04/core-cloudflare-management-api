@@ -5,6 +5,7 @@
 
 import { consultationMCPTools } from './consultation';
 import { workerCreationMCPTools } from './create-worker';
+import { agentMCPTools } from './agent-tools';
 
 /**
  * All available MCP tools
@@ -12,6 +13,7 @@ import { workerCreationMCPTools } from './create-worker';
 export const allMCPTools = [
   ...consultationMCPTools,
   ...workerCreationMCPTools,
+  ...agentMCPTools,
 ];
 
 /**

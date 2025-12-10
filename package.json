@@ -36,6 +36,7 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/node": "^24.10.2",
     "patch-package": "^8.0.1",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0",

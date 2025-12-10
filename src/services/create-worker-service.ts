@@ -743,6 +743,7 @@ export async function createWorker(
     // Use custom domain from env or default to hacolby.workers.dev
     const WORKERS_DEV_DOMAIN = 'hacolby.workers.dev';
     const workersDomain = env.WORKERS_DEV_DOMAIN || WORKERS_DEV_DOMAIN;
+    const workerUrl = `${request.project_name}.${workersDomain.replace('https://', '').replace('http://', '')}`;
 
     // Generate help page HTML
     const helpPageHtml = generateHelpPage(

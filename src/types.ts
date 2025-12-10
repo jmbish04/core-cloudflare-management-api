@@ -21,6 +21,7 @@ export interface Env {
   OBSERVABILITY_AE?: AnalyticsEngineDataset;
   WORKER_URL?: string;
   WORKERS_DEV_DOMAIN?: string; // Custom workers.dev subdomain (defaults to 'hacolby.workers.dev')
+  WORKERS_DEV_SUBDOMAIN?: string; // Custom workers.dev subdomain name (e.g., 'hacolby')
 
   // Context Coach Durable Object
   CONTEXT_COACH: DurableObjectNamespace; // Durable Object for context coaching
@@ -36,6 +37,9 @@ export interface Env {
 
   // Workers AI binding (optional)
   AI?: Ai;
+
+  // Workflow bindings
+  PROVISIONING_WORKFLOW?: any; // Workflow binding for provisioning
 }
 
 // Context variables

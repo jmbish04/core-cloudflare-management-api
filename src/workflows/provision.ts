@@ -20,15 +20,44 @@ export interface ProvisioningInput {
   };
 }
 
+export interface ResourceCreationResult {
+  success: boolean;
+  id?: string;
+  name?: string;
+  error?: string;
+}
+
+export interface KVNamespaceResult {
+  binding: string;
+  id: string;
+  name: string;
+}
+
+export interface D1DatabaseResult {
+  binding: string;
+  id: string;
+  name: string;
+}
+
+export interface R2BucketResult {
+  binding: string;
+  name: string;
+}
+
+export interface QueueResult {
+  binding: string;
+  name: string;
+}
+
 export interface ProvisioningOutput {
   success: boolean;
   projectName: string;
   workerCreated: boolean;
   resourcesCreated: {
-    kv: Array<{ binding: string; id: string; name: string }>;
-    d1: Array<{ binding: string; id: string; name: string }>;
-    r2: Array<{ binding: string; name: string }>;
-    queues: Array<{ binding: string; name: string }>;
+    kv: KVNamespaceResult[];
+    d1: D1DatabaseResult[];
+    r2: R2BucketResult[];
+    queues: QueueResult[];
   };
   wranglerConfig: string;
   errors?: string[];
@@ -70,6 +99,8 @@ export default {
 `;
 
         // Deploy the placeholder worker
+        // Note: Bindings are left empty intentionally - they will be configured
+        // via Dashboard CI/CD using the generated wrangler.jsonc
         await cf.workers.scripts.update(projectName, {
           account_id: accountId,
           body: workerContent,
@@ -96,7 +127,7 @@ export default {
     // Step 2: Create KV Namespaces
     if (requestedBindings.kv && requestedBindings.kv.length > 0) {
       for (const bindingName of requestedBindings.kv) {
-        const kvResult = await step.do(`create-kv-${bindingName}`, async () => {
+        const kvResult = await step.do(`create-kv-${bindingName}`, async (): Promise<ResourceCreationResult> => {
           try {
             const cf = new Cloudflare({ apiToken: this.env.CLOUDFLARE_TOKEN });
             const accountId = this.env.CLOUDFLARE_ACCOUNT_ID;
@@ -106,9 +137,11 @@ export default {
               title: `${projectName}-${bindingName}`,
             });
 
+            // Type assertion with explanation: SDK response structure varies
+            const namespaceData = namespace as { id: string };
             return {
               success: true,
-              id: (namespace as any).id,
+              id: namespaceData.id,
               name: `${projectName}-${bindingName}`,
             };
           } catch (error: any) {
@@ -132,7 +165,7 @@ export default {
     // Step 3: Create D1 Databases
     if (requestedBindings.d1 && requestedBindings.d1.length > 0) {
       for (const bindingName of requestedBindings.d1) {
-        const d1Result = await step.do(`create-d1-${bindingName}`, async () => {
+        const d1Result = await step.do(`create-d1-${bindingName}`, async (): Promise<ResourceCreationResult> => {
           try {
             const cf = new Cloudflare({ apiToken: this.env.CLOUDFLARE_TOKEN });
             const accountId = this.env.CLOUDFLARE_ACCOUNT_ID;
@@ -142,9 +175,11 @@ export default {
               name: `${projectName}-${bindingName}`,
             });
 
+            // Type assertion with explanation: SDK uses 'uuid' for D1 database IDs
+            const databaseData = database as { uuid: string };
             return {
               success: true,
-              id: (database as any).uuid,
+              id: databaseData.uuid,
               name: `${projectName}-${bindingName}`,
             };
           } catch (error: any) {
@@ -281,8 +316,12 @@ export default {
         config += `  },\n`;
       }
       
-      config = config.replace(/,\n$/, '\n'); // Remove trailing comma
-      config += `}\n`;
+      // Remove trailing comma from last section more robustly
+      config = config.trimEnd();
+      if (config.endsWith(',')) {
+        config = config.slice(0, -1);
+      }
+      config += `\n}\n`;
       
       return config;
     });

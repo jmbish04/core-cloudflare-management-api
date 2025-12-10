@@ -383,13 +383,17 @@ Always be helpful, concise, and accurate. If you're unsure, ask for clarificatio
       // Check if the response contains a tool call (JSON format)
       let toolCall = null;
       try {
-        // Try to extract JSON from the response
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        // Try to extract JSON from the response - look for complete JSON objects
+        const jsonMatch = responseText.match(/\{[\s\S]*?\}(?=\s|$)/);
         if (jsonMatch) {
-          toolCall = JSON.parse(jsonMatch[0]);
+          const parsed = JSON.parse(jsonMatch[0]);
+          // Validate it has the expected structure for a tool call
+          if (parsed.tool && typeof parsed.tool === 'string') {
+            toolCall = parsed;
+          }
         }
       } catch (e) {
-        // Not a tool call, treat as final response
+        // Not a valid tool call, treat as final response
       }
 
       if (toolCall && toolCall.tool) {

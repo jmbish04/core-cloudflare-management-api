@@ -89,12 +89,12 @@ export const getDeploymentLogsTool = {
 };
 
 /**
- * Tool: rollback_worker
- * Trigger a rollback for a specific worker to a previous version
+ * Tool: get_rollback_info
+ * Get information about previous deployments for potential rollback
  */
 export const rollbackWorkerTool = {
-  name: 'rollback_worker',
-  description: 'Rollback a Cloudflare Worker to a previous deployment version. This is useful when a recent deployment introduced bugs or issues.',
+  name: 'get_rollback_info',
+  description: 'Get information about previous deployments of a Cloudflare Worker for potential rollback. Note: This retrieves rollback information only; actual rollback requires stored worker content or Workers Versions API.',
   inputSchema: {
     type: 'object',
     properties: {
